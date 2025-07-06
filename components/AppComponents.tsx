@@ -1,15 +1,14 @@
 import React, { useState } from 'react';
 import { GameState, Player, Item, EventLogEntry, YearlyEvent, EventChoice, ActiveQuest, Quest, Difficulty, Opponent, Tournament, RankEntry, Match, NPC, RelationshipStatus, SectChoice, ItemType, Gender, SecretRealm } from '../types';
-import { GeminiService, REALMS, LOCATIONS, CharacterCreationOptions, SECTS } from '../services/geminiService';
+import { GeminiService, REALMS, LOCATIONS, CharacterCreationOptions, SECTS, TALENTS } from '../services/geminiService';
 import { ImageDisplay } from './ImageDisplay';
 
-type TalentChoice = 'thiên' | 'song' | 'tam' | 'tứ' | 'nguỵ';
 type FamilyChoice = 'thương nhân' | 'võ gia' | 'suy tàn';
 
 // --- Reusable Panel Component ---
-export const InfoPanel: React.FC<{ title: string; children: React.ReactNode; onClose: () => void; }> = ({ title, children, onClose }) => (
+export const InfoPanel: React.FC<{ title: string; children: React.ReactNode; onClose: () => void; className?: string }> = ({ title, children, onClose, className = '' }) => (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in-fast" onClick={onClose}>
-        <div className="panel-bg p-6 max-w-2xl w-full mx-4" onClick={(e) => e.stopPropagation()}>
+        <div className={`panel-bg p-6 w-full mx-4 ${className}`} onClick={(e) => e.stopPropagation()}>
             <h2 className="text-3xl font-serif text-cyan-300 text-center mb-6">{title}</h2>
             <div className="text-gray-300 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-3">{children}</div>
             <button onClick={onClose} className="mt-6 w-full bg-gray-700/80 text-white py-2 rounded-md hover:bg-gray-600/80 transition-colors">Đóng</button>
@@ -43,6 +42,7 @@ export const MainMenu: React.FC<{
               <button onClick={onShowApiKeySetup} className="btn btn-warning w-64 mt-2">Thiết lập API Key</button>
             </div>
             {!apiKeySet && <p className="text-yellow-400 text-xs pt-2">Vui lòng thiết lập API Key để bắt đầu!</p>}
+            <p className="text-gray-500 text-xs pt-4">game được làm ra bởi Tiểu Sếch, chơi free thoải mái, có donate thì mình cảm ơn</p>
         </div>
       </div>
     </div>
@@ -52,11 +52,54 @@ export const CharacterCreationPanel: React.FC<{ onStartGame: (options: Character
     const [name, setName] = useState('');
     const [gender, setGender] = useState<Gender>('Nam');
     const [difficulty, setDifficulty] = useState<Difficulty>('trung bình');
-    const [talent, setTalent] = useState<TalentChoice>('tam');
+    const [talents, setTalents] = useState<{ [key: string]: string | null }>({
+        [Object.keys(TALENTS)[0]]: 'tam' // Default Linh Căn to Tam Linh Căn
+    });
     const [family, setFamily] = useState<FamilyChoice>('thương nhân');
     const [avatarUrl, setAvatarUrl] = useState('');
     const [sect, setSect] = useState<SectChoice>('thiên kiếm');
     const [nsfwAllowed, setNsfwAllowed] = useState(false);
+
+    const handleTalentClick = (category: string, talentId: string) => {
+        setTalents(prev => {
+            const isMandatory = category.includes('(Bắt buộc)');
+            const currentSelection = prev[category];
+            let newSelection;
+
+            if (isMandatory) {
+                newSelection = talentId;
+            } else {
+                newSelection = currentSelection === talentId ? null : talentId;
+            }
+            
+            return { ...prev, [category]: newSelection };
+        });
+    };
+
+    const handleRandomize = () => {
+        const difficulties: Difficulty[] = ['đơn giản', 'trung bình', 'khó', 'ác mộng'];
+        const families: FamilyChoice[] = ['thương nhân', 'võ gia', 'suy tàn'];
+        const sects: SectChoice[] = ['thiên kiếm', 'vạn dược', 'huyền phù'];
+
+        setDifficulty(difficulties[Math.floor(Math.random() * difficulties.length)]);
+        setFamily(families[Math.floor(Math.random() * families.length)]);
+        setSect(sects[Math.floor(Math.random() * sects.length)]);
+        
+        const newRandomTalents: { [key: string]: string | null } = {};
+        Object.entries(TALENTS).forEach(([category, talentList]) => {
+            const isMandatory = category.includes('(Bắt buộc)');
+            if (isMandatory) {
+                newRandomTalents[category] = talentList[Math.floor(Math.random() * talentList.length)].id;
+            } else {
+                 if (Math.random() > 0.5) { // 50% chance to have an optional talent
+                    newRandomTalents[category] = talentList[Math.floor(Math.random() * talentList.length)].id;
+                 } else {
+                    newRandomTalents[category] = null;
+                 }
+            }
+        });
+        setTalents(newRandomTalents);
+    };
 
     const OptionCard: React.FC<{ title: string; description: string; isSelected: boolean; onClick: () => void; className?: string }> = ({ title, description, isSelected, onClick, className = '' }) => (
         <button
@@ -69,12 +112,16 @@ export const CharacterCreationPanel: React.FC<{ onStartGame: (options: Character
     );
 
     const handleStart = () => {
-        onStartGame({ name: name || 'Vô Danh', gender, difficulty, talent, family, avatarUrl, sect, nsfwAllowed });
+        const selectedTalentIds = Object.values(talents).filter(Boolean) as string[];
+        onStartGame({ name: name || 'Vô Danh', gender, difficulty, talents: selectedTalentIds, family, avatarUrl, sect, nsfwAllowed });
     };
 
     return (
         <div className="w-full max-w-5xl mx-auto panel-bg p-8 animate-fade-in">
-            <h2 className="text-4xl font-serif text-cyan-300 text-center mb-6">Tạo Nhân Vật</h2>
+            <div className="flex justify-center items-center mb-6 gap-4">
+                <h2 className="text-4xl font-serif text-cyan-300 text-center">Tạo Nhân Vật</h2>
+                <button onClick={handleRandomize} className="btn btn-warning py-1 px-3 text-sm" title="Ngẫu nhiên hóa các lựa chọn lối chơi">Thiên Mệnh An Bài</button>
+            </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
                  <div>
@@ -127,18 +174,27 @@ export const CharacterCreationPanel: React.FC<{ onStartGame: (options: Character
 
                 <fieldset className="md:col-span-2 border-2 border-cyan-500/20 rounded-lg p-4 space-y-4">
                      <legend className="px-2 text-lg font-semibold text-yellow-300">Tu Luyện</legend>
-                     <div>
-                        <h3 className="font-semibold text-gray-300 mb-2">Thiên Phú (Linh Căn)</h3>
-                        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                            <OptionCard title="Thiên" description="+20 TV/năm" isSelected={talent === 'thiên'} onClick={() => setTalent('thiên')} />
-                            <OptionCard title="Song" description="+15 TV/năm" isSelected={talent === 'song'} onClick={() => setTalent('song')} />
-                            <OptionCard title="Tam" description="+10 TV/năm" isSelected={talent === 'tam'} onClick={() => setTalent('tam')} />
-                            <OptionCard title="Tứ" description="+5 TV/năm" isSelected={talent === 'tứ'} onClick={() => setTalent('tứ')} />
-                            <OptionCard title="Nguỵ" description="+0 TV/năm" isSelected={talent === 'nguỵ'} onClick={() => setTalent('nguỵ')} />
-                        </div>
+                      <div>
+                        <h3 className="font-semibold text-gray-300 mb-2">Thiên Phú</h3>
+                        {Object.entries(TALENTS).map(([category, talentsInCategory]) => (
+                            <fieldset key={category} className="border-gray-600/50 mt-4 p-2">
+                                <legend className="text-gray-300 text-sm">{category}</legend>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                    {talentsInCategory.map(t => (
+                                        <OptionCard
+                                            key={t.id}
+                                            title={t.name}
+                                            description={t.description}
+                                            isSelected={talents[category] === t.id}
+                                            onClick={() => handleTalentClick(category, t.id)}
+                                        />
+                                    ))}
+                                </div>
+                            </fieldset>
+                        ))}
                     </div>
                      <div>
-                        <h3 className="font-semibold text-gray-300 mb-2">Chọn Tông Môn</h3>
+                        <h3 className="font-semibold text-gray-300 mb-2 mt-4">Chọn Tông Môn</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             {(Object.keys(SECTS) as SectChoice[]).map(sectKey => (
                                 <OptionCard 
@@ -166,7 +222,7 @@ export const CharacterCreationPanel: React.FC<{ onStartGame: (options: Character
 export const ApiKeySetupPanel: React.FC<{ onSave: (key: string) => void; onClose: () => void; }> = ({ onSave, onClose }) => {
     const [key, setKey] = useState('');
     return (
-        <InfoPanel title="Thiết lập API Key" onClose={onClose}>
+        <InfoPanel title="Thiết lập API Key" onClose={onClose} className="max-w-lg">
             <p>Để chơi, bạn cần cung cấp Google AI API Key. Key của bạn sẽ được lưu trữ an toàn trên trình duyệt này và không được gửi đi bất cứ đâu ngoài Google.</p>
             <p>Bạn có thể nhận key miễn phí tại: <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline hover:text-cyan-300">Google AI Studio</a></p>
             <input 
@@ -182,7 +238,7 @@ export const ApiKeySetupPanel: React.FC<{ onSave: (key: string) => void; onClose
 };
 
 export const InstructionsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => (
-    <InfoPanel title="Hướng dẫn" onClose={onClose}>
+    <InfoPanel title="Hướng dẫn" onClose={onClose} className="max-w-2xl">
         <h3 className="text-xl font-semibold text-yellow-300">Mục Tiêu</h3>
         <p>Bắt đầu từ một tu sĩ Luyện Khí, mục tiêu của bạn là tu luyện để đột phá qua các cảnh giới cao hơn, trở thành một tồn tại bất tử.</p>
         <h3 className="text-xl font-semibold text-yellow-300 mt-4">Tương Tác Vật Phẩm</h3>
@@ -202,24 +258,28 @@ export const InstructionsPanel: React.FC<{ onClose: () => void }> = ({ onClose }
 );
 
 export const UpdateLogPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => (
-     <InfoPanel title="Nhật Ký Cập Nhật" onClose={onClose}>
-        <h3 className="text-xl font-semibold text-yellow-300">Phiên bản 9.0.0 - "Bí Cảnh & Đồng Hành"</h3>
+     <InfoPanel title="Nhật Ký Cập Nhật" onClose={onClose} className="max-w-2xl">
+        <h3 className="text-xl font-semibold text-yellow-300">Phiên bản 11.0.0 - "Cân Bằng Thời Gian"</h3>
         <ul className="list-disc pl-5 space-y-2">
-            <li><strong>Hệ thống Bí Cảnh:</strong> Thêm các sự kiện hiếm về "Bí Cảnh". Đây là những cuộc phiêu lưu lớn, kéo dài nhiều năm với phần thưởng hậu hĩnh. Giao diện sẽ thay đổi để phù hợp khi bạn đang thám hiểm.</li>
-            <li><strong>Hệ thống Sủng Vật:</strong> Giờ đây bạn có thể nhận được sủng vật đồng hành qua các cơ duyên. Sủng vật sẽ mang lại các hiệu ứng có lợi (như tăng tu vi mỗi năm) và được hiển thị trong bảng "Nhân Mạch".</li>
-            <li><strong>Vật Phẩm Mới:</strong> AI được khuyến khích tạo ra các loại đan dược mạnh hơn và trang bị đa dạng hơn.</li>
-            <li><strong>Sửa lỗi hiển thị:</strong> Đã sửa lỗi và đảm bảo Chức Vụ Tông Môn được hiển thị rõ ràng trong bảng thông tin nhân vật.</li>
+             <li><strong>Nhịp độ game:</strong> Mỗi lượt chơi giờ sẽ trôi qua 6 tháng thay vì 1 năm, cho phép trải nghiệm chi tiết hơn.</li>
+             <li><strong>Cân bằng Tu Vi:</strong> Giảm 50% toàn bộ lượng tu vi nhận được từ mọi nguồn để làm chậm tiến độ game, khiến mỗi lần đột phá trở nên ý nghĩa hơn.</li>
+             <li><strong>Cân bằng NPC:</strong> Giảm tần suất xuất hiện của Tiêu Y Tiên để phù hợp hơn với tính cách của nhân vật.</li>
         </ul>
-        <h3 className="text-xl font-semibold text-yellow-300 mt-4">Phiên bản 8.0.0 - "Tông Môn Trật Tự"</h3>
+        <h3 className="text-xl font-semibold text-yellow-300 mt-4">Phiên bản 10.0.0 - "Thành Trấn & Giao Thương"</h3>
         <ul className="list-disc pl-5 space-y-2">
-            <li><strong>Hệ thống Chức Vụ:</strong> Thêm hệ thống chức vụ tông môn (Ngoại môn, Nội môn, Trưởng lão, v.v.). Chức vụ sẽ tự động được thăng cấp khi bạn đột phá cảnh giới.</li>
-            <li><strong>Hệ thống Bổng Lộc:</strong> Mỗi năm bạn sẽ nhận được bổng lộc (linh thạch) dựa trên chức vụ hiện tại.</li>
+            <li><strong>Hệ thống Cửa hàng:</strong> Bổ sung Cửa hàng tại Thành Trấn. Người chơi có thể mua bán vật phẩm để trang bị hoặc kiếm thêm Linh thạch. Hàng hóa sẽ được làm mới sau mỗi 10 năm.</li>
+            <li><strong>Sửa lỗi Đại Hội Thiên Kiêu:</strong> Đã sửa một lỗi nghiêm trọng khiến giải đấu bị kẹt hoặc treo.</li>
+        </ul>
+        <h3 className="text-xl font-semibold text-yellow-300 mt-4">Phiên bản 9.0.0 - "Bí Cảnh & Đồng Hành"</h3>
+        <ul className="list-disc pl-5 space-y-2">
+            <li><strong>Hệ thống Bí Cảnh:</strong> Thêm các sự kiện hiếm về "Bí Cảnh". Đây là những cuộc phiêu lưu lớn, kéo dài nhiều năm với phần thưởng hậu hĩnh.</li>
+            <li><strong>Hệ thống Sủng Vật:</strong> Giờ đây bạn có thể nhận được sủng vật đồng hành qua các cơ duyên, mang lại các hiệu ứng có lợi.</li>
         </ul>
     </InfoPanel>
 );
 
 export const GeniusRankingPanel: React.FC<{ ranking: RankEntry[], onClose: () => void }> = ({ ranking, onClose }) => (
-    <InfoPanel title="Bảng Xếp Hạng Thiên Kiêu" onClose={onClose}>
+    <InfoPanel title="Bảng Xếp Hạng Thiên Kiêu" onClose={onClose} className="max-w-2xl">
         {ranking.length === 0 ? (
             <p>Chưa có ai được ghi danh trên Bảng Xếp Hạng Thiên Kiêu. Hãy trở thành nhà vô địch đầu tiên!</p>
         ) : (
@@ -236,7 +296,7 @@ export const GeniusRankingPanel: React.FC<{ ranking: RankEntry[], onClose: () =>
                         <tr key={entry.rank} className="border-b border-gray-700">
                             <td className="p-2 font-bold">{entry.rank}</td>
                             <td className="p-2">{entry.name}</td>
-                            <td className="p-2 text-sm">{entry.achievement} (Năm {entry.year - 15})</td>
+                            <td className="p-2 text-sm">{entry.achievement} (Năm {Math.floor(entry.year - 15)})</td>
                         </tr>
                     ))}
                 </tbody>
@@ -246,7 +306,7 @@ export const GeniusRankingPanel: React.FC<{ ranking: RankEntry[], onClose: () =>
 );
 
 export const RelationshipPanel: React.FC<{ npcs: NPC[], player: Player, onClose: () => void }> = ({ npcs, player, onClose }) => (
-    <InfoPanel title="Nhân Mạch" onClose={onClose}>
+    <InfoPanel title="Nhân Mạch" onClose={onClose} className="max-w-2xl">
         {npcs.length === 0 && player.pets.length === 0 ? (
             <p>Bạn chưa có mối quan hệ hay đồng hành nào đáng chú ý.</p>
         ) : (
@@ -274,7 +334,7 @@ export const RelationshipPanel: React.FC<{ npcs: NPC[], player: Player, onClose:
                                 <div key={pet.id} className="p-3 bg-gray-800/60 rounded-lg border border-cyan-400/20">
                                     <h4 className="text-xl font-semibold text-yellow-300">{pet.name} <span className="text-base font-normal text-gray-400">({pet.species})</span></h4>
                                     <p className="text-sm italic text-gray-400 mb-2">"{pet.description}"</p>
-                                    {pet.effects.cultivationBonusPerYear && <p className="text-sm text-green-400">+ {pet.effects.cultivationBonusPerYear} Tu vi mỗi năm</p>}
+                                    {pet.effects.cultivationBonusPerYear && <p className="text-sm text-green-400">+ {pet.effects.cultivationBonusPerYear * 2} Tu vi mỗi năm</p>}
                                 </div>
                             ))}
                         </div>
@@ -300,7 +360,7 @@ export const QuestTracker: React.FC<{ quest: ActiveQuest }> = ({ quest }) => {
             <p className="text-lg text-white font-bold text-center">{quest.title}</p>
             <p className="text-sm text-gray-400 italic text-center mb-2">"{quest.description}"</p>
             <div className="text-sm">
-                <p><strong>Tiến độ:</strong> {quest.progress} / {quest.duration} năm</p>
+                <p><strong>Tiến độ:</strong> {quest.progress} / {quest.duration} lượt</p>
                 <div className="w-full bg-gray-700/80 rounded-full h-3 my-1 border border-yellow-500/30 overflow-hidden">
                     <div className="bg-gradient-to-r from-yellow-500 to-amber-400 h-full rounded-full transition-all duration-500" style={{ width: `${progressPercentage}%` }}></div>
                 </div>
@@ -318,7 +378,7 @@ export const SecretRealmTracker: React.FC<{ realm: SecretRealm }> = ({ realm }) 
             <p className="text-lg text-white font-bold text-center">{realm.name}</p>
             <p className="text-sm text-gray-400 italic text-center mb-2">"{realm.description}"</p>
             <div className="text-sm">
-                <p><strong>Tiến độ:</strong> {realm.progress} / {realm.duration} năm</p>
+                <p><strong>Tiến độ:</strong> {realm.progress} / {realm.duration} lượt</p>
                 <div className="w-full bg-gray-700/80 rounded-full h-3 my-1 border border-purple-500/30 overflow-hidden">
                     <div className="bg-gradient-to-r from-purple-500 to-fuchsia-500 h-full rounded-full transition-all duration-500" style={{ width: `${progressPercentage}%` }}></div>
                 </div>
@@ -380,7 +440,7 @@ const StatusBar: React.FC<{ player: Player }> = ({ player }) => {
                 <div className="w-full bg-gray-900/80 rounded-full h-4 my-1 border border-cyan-500/30 overflow-hidden">
                     <div className="bg-gradient-to-r from-cyan-500 to-teal-400 h-full rounded-full transition-all duration-500 flex items-center justify-center text-xs font-bold text-indigo-900" style={{ width: `${cultivationPercentage}%` }}>{Math.floor(cultivationPercentage)}%</div>
                 </div>
-                <p className="text-xs text-center text-cyan-200">{player.cultivation} / {player.cultivationForNextRealm} Tu vi</p>
+                <p className="text-xs text-center text-cyan-200">{Math.floor(player.cultivation)} / {player.cultivationForNextRealm} Tu vi</p>
              </div>
         </div>
     );
@@ -391,6 +451,9 @@ const CharacterSheet: React.FC<{ player: Player; npcs: NPC[]; activeSecretRealm:
     const yearsLeft = currentRealmDetails ? currentRealmDetails.maxAge - player.age : Infinity;
     const spouse = player.spouseId ? npcs.find(n => n.id === player.spouseId) : null;
     const yearsLeftColor = yearsLeft < 10 ? 'text-red-400 animate-pulse' : yearsLeft < 50 ? 'text-yellow-400' : 'text-gray-400';
+    
+    const allTalentsFlat = Object.values(TALENTS).flat();
+    const playerTalentNames = player.talents.map(id => allTalentsFlat.find(t => t.id === id)?.name).filter(Boolean);
 
     return (
         <div className="space-y-4 text-lg">
@@ -400,14 +463,14 @@ const CharacterSheet: React.FC<{ player: Player; npcs: NPC[]; activeSecretRealm:
             </div>
 
             <div className="space-y-2 text-base">
-                <p><span className="font-semibold text-gray-400">Tông Môn:</span> {player.sect} (<span className="text-amber-300">{player.sectRank}</span>)</p>
+                <p><span className="font-semibold text-gray-400">Tông Môn:</span> {player.sect} - <span className="text-amber-300">{player.sectRank}</span></p>
                 <p><span className="font-semibold text-gray-400">Vị trí:</span> {player.currentLocation}</p>
-                <p><span className="font-semibold text-gray-400">Tuổi:</span> {player.age} <span className={`text-sm ${yearsLeftColor}`}>({yearsLeft < Infinity ? `còn ${yearsLeft} năm` : 'vô hạn'})</span></p>
+                <p><span className="font-semibold text-gray-400">Tuổi:</span> {player.age} <span className={`text-sm ${yearsLeftColor}`}>({yearsLeft < Infinity ? `còn ${Math.ceil(yearsLeft)} năm` : 'vô hạn'})</span></p>
                  {spouse && <p><span className="font-semibold text-gray-400">Đạo Lữ:</span> <span className="text-pink-400">{spouse.name}</span></p>}
                 
                 <div className="pt-2">
                     <p className="font-semibold text-gray-400">Thiên phú:</p>
-                    <p className="text-sm text-purple-300" title={`+${player.talentCultivationBonus} tu vi mỗi năm`}>{player.talent}</p>
+                    <p className="text-sm text-purple-300">{playerTalentNames.join(' | ')}</p>
                 </div>
                  {player.cultivationTechnique && ( 
                  <div>
@@ -518,7 +581,7 @@ export const EventChoicePanel: React.FC<{ event: YearlyEvent, onSelectChoice: (c
 );
 
 export const TournamentPanel: React.FC<{ tournament: Tournament; player: Player; event: YearlyEvent | null; onSelectChoice: (choice: EventChoice) => void; }> = ({ tournament, player, event, onSelectChoice }) => {
-    const roundNames = ["Vòng 1/16", "Tứ kết", "Bán kết", "Chung kết"];
+    const roundNames = ["Tứ kết", "Bán kết", "Chung kết"];
     
     const renderName = (p: Player | Opponent) => {
         if ('title' in p) return `${p.name} - ${p.title}`;
@@ -527,7 +590,7 @@ export const TournamentPanel: React.FC<{ tournament: Tournament; player: Player;
 
     return (
         <div className="panel-bg flex flex-col flex-grow min-h-0 p-6 animate-fade-in">
-            <h2 className="text-4xl font-serif text-yellow-300 text-center mb-4">Đại Hội Thiên Kiêu - Năm {tournament.year - 15}</h2>
+            <h2 className="text-4xl font-serif text-yellow-300 text-center mb-4">Đại Hội Thiên Kiêu - Năm {Math.floor(tournament.year - 15)}</h2>
             <div className="flex-grow flex md:flex-row flex-col gap-4">
                 {/* Bracket */}
                 <div className="flex-1 space-y-4 overflow-y-auto custom-scrollbar pr-2">
@@ -561,3 +624,81 @@ export const TournamentPanel: React.FC<{ tournament: Tournament; player: Player;
         </div>
     );
 };
+
+export const ShopPanel: React.FC<{
+    player: Player;
+    inventory: Item[];
+    onClose: () => void;
+    onBuy: (item: Item) => void;
+    onSell: (item: Item) => void;
+}> = ({ player, inventory, onClose, onBuy, onSell }) => {
+    const [activeTab, setActiveTab] = useState<'buy' | 'sell'>('buy');
+    const playerItemsToSell = player.inventory.filter(item => {
+        const equippedIds = Object.values(player.equipment).filter(Boolean).map(i => i!.id);
+        return !equippedIds.includes(item.id);
+    });
+
+    const TabButton: React.FC<{label: string; name: 'buy' | 'sell'}> = ({label, name}) => (
+         <button onClick={() => setActiveTab(name)} className={`flex-1 py-2 text-lg font-semibold transition-colors duration-300 border-b-4 ${activeTab === name ? 'text-cyan-300 border-cyan-400' : 'text-gray-500 border-transparent hover:text-cyan-400 hover:border-cyan-400/30'}`}>
+            {label}
+        </button>
+    );
+
+    const ItemRow: React.FC<{item: Item, isBuying: boolean}> = ({ item, isBuying }) => {
+        const canAfford = isBuying && item.cost ? player.linhThach >= item.cost : true;
+        const sellPrice = Math.floor((item.cost ?? 10) * 0.4);
+        
+        return (
+            <div className="flex items-center p-3 bg-gray-800/60 rounded-lg border border-cyan-400/10">
+                <div className="flex-grow">
+                    <p className="font-semibold text-white">{item.name}</p>
+                    <p className="text-sm text-gray-400 italic">"{item.description}"</p>
+                </div>
+                <div className="text-right ml-4 shrink-0">
+                    <p className="font-bold text-yellow-300">
+                         {isBuying ? item.cost : sellPrice} Linh Thạch
+                    </p>
+                    <button 
+                        onClick={() => isBuying ? onBuy(item) : onSell(item)}
+                        disabled={!canAfford}
+                        className={`mt-1 text-sm py-1 px-3 rounded-md transition-colors ${isBuying ? 'btn-secondary' : 'btn-warning'} disabled:bg-gray-600 disabled:text-gray-400 disabled:cursor-not-allowed`}
+                    >
+                       {isBuying ? 'Mua' : 'Bán'}
+                    </button>
+                </div>
+            </div>
+        )
+    };
+
+    return (
+         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in-fast" onClick={onClose}>
+            <div className="panel-bg p-0 max-w-3xl w-full mx-4 flex flex-col" style={{height: '90vh'}} onClick={(e) => e.stopPropagation()}>
+                <div className="p-6">
+                     <h2 className="text-4xl font-serif text-cyan-300 text-center">Cửa Hàng Thành Trấn</h2>
+                     <p className="text-center text-yellow-300">Linh Thạch: {player.linhThach}</p>
+                </div>
+                <div className="flex border-b border-white/10 px-6">
+                    <TabButton label="Mua Vật Phẩm" name="buy"/>
+                    <TabButton label="Bán Vật Phẩm" name="sell"/>
+                </div>
+                <div className="flex-grow p-6 overflow-y-auto custom-scrollbar">
+                    <div className="space-y-3">
+                        {activeTab === 'buy' && (
+                            inventory.length > 0
+                                ? inventory.map(item => <ItemRow key={item.id} item={item} isBuying={true} />)
+                                : <p className="text-center text-gray-500 italic">Cửa hàng hiện không có gì để bán.</p>
+                        )}
+                        {activeTab === 'sell' && (
+                           playerItemsToSell.length > 0 
+                                ? playerItemsToSell.map(item => <ItemRow key={item.id} item={item} isBuying={false} />)
+                                : <p className="text-center text-gray-500 italic">Túi đồ của bạn trống rỗng.</p>
+                        )}
+                    </div>
+                </div>
+                <div className="p-6 border-t border-white/10">
+                    <button onClick={onClose} className="w-full btn btn-dark">Rời khỏi</button>
+                </div>
+            </div>
+        </div>
+    );
+}

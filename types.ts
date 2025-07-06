@@ -36,7 +36,7 @@ export interface Quest {
     description: string;
     location: string; // Tên địa điểm để hoàn thành
     difficulty: 'đơn giản' | 'trung bình' | 'khó';
-    duration: number; // in years
+    duration: number; // in turns
     reward: {
         linhThach?: number;
         cultivation?: number;
@@ -45,7 +45,7 @@ export interface Quest {
 }
 
 export interface ActiveQuest extends Quest {
-    progress: number; // years progressed
+    progress: number; // turns progressed
 }
 
 export interface Opponent {
@@ -69,7 +69,7 @@ export interface Match {
 export interface Tournament {
     year: number;
     isActive: boolean;
-    currentRound: number; // 1 = Vòng 1/16, 2 = Tứ kết, 3 = Bán kết, 4 = Chung kết
+    currentRound: number; // 1 = Tứ kết, 2 = Bán kết, 3 = Chung kết
     bracket: Match[][]; // Mảng các vòng đấu, mỗi vòng là một mảng các trận đấu
 }
 
@@ -111,8 +111,8 @@ export interface SecretRealm {
     id: string;
     name:string;
     description: string;
-    duration: number; // in years
-    progress: number; // years progressed
+    duration: number; // in turns
+    progress: number; // turns progressed
     reward: {
         linhThach?: number;
         cultivation?: number;
@@ -144,13 +144,15 @@ export interface Player {
   cultivationTechnique: CultivationTechnique | null;
   currentLocation: string;
   activeQuest: ActiveQuest | null;
-  talent: string;
-  talentCultivationBonus: number;
+  talents: string[]; // IDs of selected talents
   avatarUrl: string;
   spouseId: string | null;
   sect: string;
+  family: string;
   sectRank: string;
   pets: Pet[];
+  linhThachGainModifier: number;
+  cultivationGainModifier: number;
 }
 
 export interface EventLogEntry {
@@ -196,6 +198,7 @@ export interface EventChoice {
             };
         };
         startSecretRealm?: Omit<SecretRealm, 'id' | 'progress'>;
+        dualCultivation?: boolean;
     }
 }
 
@@ -222,4 +225,6 @@ export interface GameState {
   npcs: NPC[];
   nsfwAllowed: boolean;
   activeSecretRealm: SecretRealm | null;
+  shopInventory: Item[];
+  shopLastRefreshed: number;
 }

@@ -1,7 +1,6 @@
-
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { GameState, Player, Item, EventLogEntry, YearlyEvent, EventChoice, ActiveQuest, Quest, Difficulty, Opponent, Tournament, RankEntry, Match, NPC, RelationshipStatus, SectChoice, ItemType, Gender, Pet, SecretRealm } from './types';
-import { GeminiService, REALMS, SECT_RANKS, CharacterCreationOptions, INITIAL_NPCS } from './services/geminiService';
+import { GeminiService, REALMS, SECT_RANKS, CharacterCreationOptions, INITIAL_NPCS, generateShopStock, TECHNIQUES, TALENTS } from './services/geminiService';
 import { EventLogPanel } from './components/StoryLog';
 import { GameControls } from './components/PlayerInput';
 import { GameOverlay } from './components/GameOverlay';
@@ -17,13 +16,15 @@ import {
     MapPanel,
     PlayerInfoPanel,
     TournamentPanel,
-    EventChoicePanel
+    EventChoicePanel,
+    ShopPanel
 } from './components/AppComponents';
 
 const SAVE_KEY = 'TUTIEN_SAVE_GAME';
 const API_KEY_STORAGE_KEY = 'TUTIEN_API_KEY';
 const TOURNAMENT_INTERVAL = 50;
 const TOURNAMENT_FEE = 2000;
+const SHOP_REFRESH_INTERVAL = 5; // in years
 
 type AppView = 'main-menu' | 'character-creation' | 'playing' | 'instructions' | 'update-log' | 'api-key-setup';
 
@@ -44,6 +45,8 @@ const initialState: GameState = {
   npcs: [],
   nsfwAllowed: false,
   activeSecretRealm: null,
+  shopInventory: [],
+  shopLastRefreshed: 0,
 };
 
 
@@ -59,6 +62,7 @@ function App() {
   const [isRankingOpen, setRankingOpen] = useState(false);
   const [isRelationshipPanelOpen, setRelationshipPanelOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<{item: Item, isEquipped: boolean} | null>(null);
+  const [isShopOpen, setShopOpen] = useState(false);
 
 
   useEffect(() => {
@@ -93,7 +97,7 @@ function App() {
       return npcs.map(npc => {
           const currentNpcRealmIndex = REALMS.findIndex(r => r.name === npc.realm);
           // NPCs progress a bit slower/faster than player
-          const progressionRate = (10 + Math.random() * 15) * (1 + currentNpcRealmIndex * 0.2);
+          const progressionRate = (10 + Math.random() * 15) * (1 + currentNpcRealmIndex * 0.2) / 2;
           let newCultivation = npc.cultivation + progressionRate;
           let newRealm = npc.realm;
 
@@ -140,7 +144,7 @@ function App() {
   
   const createTournamentInvitationEvent = (): YearlyEvent => {
     return {
-        description: `Trời đất rung chuyển, linh khí hội tụ! <strong>Đại Hội Thiên Kiêu</strong> lần thứ ${(gameState.year + 1 - 16) / TOURNAMENT_INTERVAL} sắp bắt đầu. Đây là cơ hội ngàn năm có một để tranh tài với các thiên kiêu trong thiên hạ, giành lấy danh vọng và phần thưởng vô giá. Phí báo danh là ${TOURNAMENT_FEE} linh thạch. Bạn có muốn tham gia?`,
+        description: `Trời đất rung chuyển, linh khí hội tụ! <strong>Đại Hội Thiên Kiêu</strong> lần thứ ${Math.floor((gameState.year + 0.5 - 16) / TOURNAMENT_INTERVAL) + 1} sắp bắt đầu. Đây là cơ hội ngàn năm có một để tranh tài với các thiên kiêu trong thiên hạ, giành lấy danh vọng và phần thưởng vô giá. Phí báo danh là ${TOURNAMENT_FEE} linh thạch. Bạn có muốn tham gia?`,
         choices: [
             { text: `Tham gia (Tốn ${TOURNAMENT_FEE} Linh Thạch)`, effects: { tournamentAction: 'join' } },
             { text: "Bỏ qua, an phận tu luyện", effects: { tournamentAction: 'decline' } }
@@ -193,92 +197,91 @@ function App() {
   const handleNextYear = useCallback(async () => {
     if (!gameState.player || gameState.isLoading || gameState.currentEvent || !geminiService) return;
     
-    // --- Secret Realm Logic ---
-    if (gameState.activeSecretRealm) {
-        setGameState(prev => {
-            if (!prev.player || !prev.activeSecretRealm) return prev;
+    const passTime = (prev: GameState): GameState => {
+        if (!prev.player) return prev;
+        
+        let p = { ...prev.player };
+        let newLogEntries: EventLogEntry[] = [];
+        let activeSecretRealm = prev.activeSecretRealm ? { ...prev.activeSecretRealm } : null;
 
-            let p = { ...prev.player };
-            let realm = { ...prev.activeSecretRealm, progress: prev.activeSecretRealm.progress + 1 };
-            let newLogEntries: EventLogEntry[] = [];
-            let activeSecretRealm: SecretRealm | null = realm;
-            
-            p.age += 1;
-            
-            const petBonus = p.pets.reduce((acc, pet) => acc + (pet.effects.cultivationBonusPerYear ?? 0), 0);
-            const techniqueBonus = p.cultivationTechnique?.effects.cultivationBonus ?? 0;
-            const talentBonus = p.talentCultivationBonus ?? 0;
-            p.cultivation += 15 + techniqueBonus + talentBonus + petBonus;
+        // Passive regeneration
+        p.health = Math.min(p.maxHealth, Math.round(p.health + p.maxHealth * 0.1));
+        p.age += 0.5;
 
-            if (realm.progress >= realm.duration) {
-                // Realm finished
-                activeSecretRealm = null;
-                p.linhThach += realm.reward.linhThach ?? 0;
-                p.cultivation += realm.reward.cultivation ?? 0;
-                if (realm.reward.item) p.inventory.push(realm.reward.item);
-                newLogEntries.push({ id: prev.eventLog.length, year: p.age, text: `**BÍ CẢNH KẾT THÚC: ${realm.name}!** Sau ${realm.duration} năm thám hiểm, bạn nhận được phần thưởng hậu hĩnh!`, isMajor: true });
-            } else {
-                newLogEntries.push({ id: prev.eventLog.length, year: p.age, text: `Bạn tiếp tục thám hiểm **${realm.name}**. Tiến độ: ${realm.progress}/${realm.duration} năm.`, isMajor: false });
+        // Base cultivation gain
+        const allTalents = Object.values(TALENTS).flat();
+        const talentBonusPerYear = p.talents.reduce((acc, talentId) => {
+            const talentInfo = allTalents.find(t => t.id === talentId);
+            return acc + (talentInfo?.effects.cultivationBonus ?? 0);
+        }, 0);
+        const petBonus = p.pets.reduce((acc, pet) => acc + (pet.effects.cultivationBonusPerYear ?? 0), 0);
+        const techniqueBonus = p.cultivationTechnique?.effects.cultivationBonus ?? 0;
+        const basePassiveGain = 15;
+        const totalPassiveGain = ((basePassiveGain + techniqueBonus + talentBonusPerYear + petBonus) / 2) * p.cultivationGainModifier;
+        
+        p.cultivation += totalPassiveGain;
+
+        // Salary check (annually)
+        if (p.age % 1 === 0) {
+            const currentRankDetails = SECT_RANKS.find(r => r.name === p.sectRank);
+            if (currentRankDetails && currentRankDetails.salary > 0) {
+                const salary = Math.round(currentRankDetails.salary * p.linhThachGainModifier);
+                p.linhThach += salary;
+                newLogEntries.push({ id: prev.eventLog.length + 6, year: p.age, text: `Bạn nhận được ${salary} linh thạch bổng lộc hàng năm từ chức vụ ${p.sectRank}.`, isMajor: false });
             }
-            
-            const updatedNpcs = progressNpcs(prev.npcs);
-            const { player: updatedPlayer, log: breakthroughLog, isGameOver: ageDeath } = checkPlayerState(p, newLogEntries, prev.eventLog.length + 500);
-            const newLog = [...breakthroughLog.reverse(), ...prev.eventLog];
+        }
+        
+        // Secret Realm Progress
+        if (activeSecretRealm) {
+            activeSecretRealm.progress += 1;
+            if (activeSecretRealm.progress >= activeSecretRealm.duration) {
+                const linhThachReward = Math.round((activeSecretRealm.reward.linhThach ?? 0) * p.linhThachGainModifier);
+                const cultivationReward = Math.round(((activeSecretRealm.reward.cultivation ?? 0) / 2) * p.cultivationGainModifier);
+                p.linhThach += linhThachReward;
+                p.cultivation += cultivationReward;
+                if (activeSecretRealm.reward.item) p.inventory.push(activeSecretRealm.reward.item);
+                newLogEntries.push({ id: prev.eventLog.length, year: p.age, text: `**BÍ CẢNH KẾT THÚC: ${activeSecretRealm.name}!** Sau ${activeSecretRealm.duration / 2} năm thám hiểm, bạn nhận được phần thưởng hậu hĩnh!`, isMajor: true });
+                activeSecretRealm = null; // End of realm
+            } else {
+                newLogEntries.push({ id: prev.eventLog.length, year: p.age, text: `Bạn tiếp tục thám hiểm **${activeSecretRealm.name}**. Tiến độ: ${activeSecretRealm.progress}/${activeSecretRealm.duration} lượt.`, isMajor: false });
+            }
+        } 
+        // Quest Progress
+        else if (p.activeQuest && p.currentLocation === p.activeQuest.location) {
+             p.activeQuest.progress += 1;
+             let quest = p.activeQuest;
+             newLogEntries.push({ id: prev.eventLog.length, year: p.age, text: `Bạn dành nửa năm tại ${p.currentLocation} để hoàn thành nhiệm vụ "${quest.title}". Tiến độ: ${quest.progress}/${quest.duration} lượt.`, isMajor: false });
+             
+             if (quest.progress >= quest.duration) {
+                 const linhThachReward = Math.round((quest.reward.linhThach ?? 0) * p.linhThachGainModifier);
+                 const cultivationReward = Math.round(((quest.reward.cultivation ?? 0) / 2) * p.cultivationGainModifier);
+                 p.linhThach += linhThachReward;
+                 p.cultivation += cultivationReward;
+                 if (quest.reward.item) p.inventory.push(quest.reward.item);
+                 newLogEntries.push({ id: prev.eventLog.length + 400, year: p.age, text: `**NHIỆM VỤ HOÀN THÀNH: ${quest.title}!** Bạn nhận được phần thưởng.`, isMajor: true });
+                 p.activeQuest = null;
+             }
+        }
+        
+        const updatedNpcs = progressNpcs(prev.npcs);
+        const { player: updatedPlayer, log: breakthroughLog, isGameOver: ageDeath } = checkPlayerState(p, newLogEntries, prev.eventLog.length + 500);
+        const newLog = [...breakthroughLog.reverse(), ...prev.eventLog];
 
-            return { ...prev, player: updatedPlayer, year: updatedPlayer.age, eventLog: newLog, npcs: updatedNpcs, isGameOver: ageDeath, hasTraveledThisYear: false, activeSecretRealm };
-        });
-        return;
+        return { ...prev, player: updatedPlayer, year: updatedPlayer.age, eventLog: newLog, npcs: updatedNpcs, isGameOver: ageDeath, hasTraveledThisYear: false, activeSecretRealm };
     }
 
-    const nextYear = gameState.year + 1;
-    const isTournamentYear = (nextYear - 16) % TOURNAMENT_INTERVAL === 0 && nextYear > 16;
+
+    // --- Main Logic Flow ---
+    if (gameState.activeSecretRealm || (gameState.player.activeQuest && gameState.player.currentLocation === gameState.player.activeQuest.location)) {
+        setGameState(passTime);
+        return;
+    }
+    
+    const nextYear = gameState.year + 0.5;
+    const isTournamentYear = (nextYear > 16) && (Math.abs((nextYear - 16) % TOURNAMENT_INTERVAL) < 0.01);
     
     if (isTournamentYear) {
         setGameState(prev => ({...prev, currentEvent: createTournamentInvitationEvent()}));
-        return;
-    }
-
-    if (gameState.player.activeQuest && gameState.player.currentLocation === gameState.player.activeQuest.location) {
-        setGameState(prev => {
-            if (!prev.player || !prev.player.activeQuest) return prev;
-            
-            let p = { ...prev.player };
-            const quest = p.activeQuest;
-            let newLogEntries: EventLogEntry[] = [];
-
-            p.age += 1;
-
-            const currentRankDetails = SECT_RANKS.find(r => r.name === p.sectRank);
-            if (currentRankDetails && currentRankDetails.salary > 0) {
-                p.linhThach += currentRankDetails.salary;
-                newLogEntries.push({ id: prev.eventLog.length + 6, year: p.age, text: `Bạn nhận được ${currentRankDetails.salary} linh thạch bổng lộc hàng năm từ chức vụ ${p.sectRank}.`, isMajor: false });
-            }
-
-            p.activeQuest = { ...quest, progress: quest.progress + 1 };
-            
-            const petBonus = p.pets.reduce((acc, pet) => acc + (pet.effects.cultivationBonusPerYear ?? 0), 0);
-            const techniqueBonus = p.cultivationTechnique?.effects.cultivationBonus ?? 0;
-            const talentBonus = p.talentCultivationBonus ?? 0;
-            p.cultivation += 15 + techniqueBonus + talentBonus + petBonus;
-
-            let questYearText = `Bạn đã dành một năm tại ${p.currentLocation} để hoàn thành nhiệm vụ "${quest.title}". Tiến độ: ${p.activeQuest.progress}/${quest.duration} năm.`;
-            newLogEntries.push({ id: prev.eventLog.length, year: p.age, text: questYearText, isMajor: false });
-            
-            if (p.activeQuest.progress >= quest.duration) {
-                p.linhThach += quest.reward.linhThach ?? 0;
-                p.cultivation += quest.reward.cultivation ?? 0;
-                if (quest.reward.item) p.inventory.push(quest.reward.item);
-                newLogEntries.push({ id: prev.eventLog.length + 400, year: p.age, text: `**NHIỆM VỤ HOÀN THÀNH: ${quest.title}!** Bạn nhận được ${quest.reward.linhThach ?? 0} linh thạch.`, isMajor: true });
-                p.activeQuest = null;
-            }
-            
-            const updatedNpcs = progressNpcs(prev.npcs);
-
-            const { player: updatedPlayer, log: breakthroughLog, isGameOver: ageDeath } = checkPlayerState(p, newLogEntries, prev.eventLog.length + 500);
-            
-            const newLog = [...breakthroughLog.reverse(), ...prev.eventLog];
-            return { ...prev, player: updatedPlayer, year: updatedPlayer.age, eventLog: newLog, npcs: updatedNpcs, isGameOver: ageDeath, hasTraveledThisYear: false };
-        });
         return;
     }
 
@@ -327,6 +330,14 @@ function App() {
                 if (eligibleRankIndex > currentRankIndex) {
                     p.sectRank = eligibleRank.name;
                     logBuffer.push({ id: idOffset + 150, year: p.age, text: `**THĂNG CHỨC!** Do tu vi đột phá, bạn đã được thăng lên chức vụ **${p.sectRank}** trong tông môn!`, isMajor: true });
+
+                    if (eligibleRank.name === 'Trưởng Lão') {
+                        const sectTechnique = TECHNIQUES.find(t => t.name === 'Nguyên Khí Chân Quyết');
+                        if (sectTechnique) {
+                            p.cultivationTechnique = sectTechnique;
+                            logBuffer.push({ id: idOffset + 160, year: p.age, text: `Do được thăng chức, bạn được tông môn ban thưởng công pháp: <strong>${sectTechnique.name}</strong>!`, isMajor: true });
+                        }
+                    }
                 }
             }
         }
@@ -356,43 +367,56 @@ function App() {
             let newLog: EventLogEntry[] = [...prev.eventLog];
             let tournament = prev.tournament ? JSON.parse(JSON.stringify(prev.tournament)) : null;
             let newEvent: YearlyEvent | null = null;
+            const currentYear = prev.year + 0.5;
             
             if (action === 'decline') {
-                newLog.unshift({ id: newLog.length, year: prev.year, text: "Bạn đã từ chối tham gia Đại Hội Thiên Kiêu để tập trung tu luyện.", isMajor: false });
-                return { ...prev, eventLog: newLog, currentEvent: null };
+                newLog.unshift({ id: newLog.length, year: currentYear, text: "Bạn đã từ chối tham gia Đại Hội Thiên Kiêu để tập trung tu luyện.", isMajor: false });
+                return { ...prev, player: {...player, age: currentYear}, year: currentYear, eventLog: newLog, currentEvent: null };
             }
             
             if (action === 'join') {
                 if (player.linhThach < TOURNAMENT_FEE) {
-                    newLog.unshift({ id: newLog.length, year: prev.year, text: `Bạn không đủ ${TOURNAMENT_FEE} linh thạch để tham gia Đại Hội Thiên Kiêu.`, isMajor: true });
-                     return { ...prev, eventLog: newLog, currentEvent: null };
+                    newLog.unshift({ id: newLog.length, year: currentYear, text: `Bạn không đủ ${TOURNAMENT_FEE} linh thạch để tham gia Đại Hội Thiên Kiêu.`, isMajor: true });
+                     return { ...prev, player: {...player, age: currentYear}, year: currentYear, eventLog: newLog, currentEvent: null };
                 }
                 player.linhThach -= TOURNAMENT_FEE;
-                newLog.unshift({ id: newLog.length, year: prev.year, text: `Bạn đã chi ${TOURNAMENT_FEE} linh thạch để ghi danh vào **Đại Hội Thiên Kiêu**.`, isMajor: true });
+                newLog.unshift({ id: newLog.length, year: currentYear, text: `Bạn đã chi ${TOURNAMENT_FEE} linh thạch để ghi danh vào **Đại Hội Thiên Kiêu**.`, isMajor: true });
 
                 const opponents = generateTournamentOpponents(player, prev.difficulty);
-                const allParticipants: (Player|Opponent)[] = [player, ...opponents.slice(0,7)]; // Round of 8 for simplicity now
-                // TODO: Expand to 16. For now, 8 participants.
+                // 8 participants: 1 player + 7 opponents
+                const allParticipants: (Player|Opponent)[] = [player, ...opponents.slice(0,7)]; 
                 const shuffled = allParticipants.sort(() => 0.5 - Math.random());
                 const round1: Match[] = [];
                 for(let i=0; i < shuffled.length; i+=2) {
                     round1.push({player1: shuffled[i], player2: shuffled[i+1], winner: null});
                 }
-                tournament = { year: prev.year + 1, isActive: true, currentRound: 1, bracket: [round1] };
+                tournament = { year: currentYear, isActive: true, currentRound: 1, bracket: [round1] };
 
                 const playerMatch = round1.find(m => (m.player1 as Player).name === player.name || (m.player2 as Player).name === player.name);
                 if (playerMatch) {
                    newEvent = createMatchEvent(playerMatch);
                 } else {
-                    // This case shouldn't happen
+                   // This case shouldn't happen, but as a fallback, cancel tournament
+                   newLog.unshift({ id: newLog.length, year: currentYear, text: `Lỗi khi tạo giải đấu.`, isMajor: true });
                    tournament = null;
                    newEvent = null;
                 }
+                return { ...prev, player: {...player, age: currentYear}, year: currentYear, eventLog: newLog, currentEvent: newEvent, tournament };
             }
             
             if (action === 'fight' && tournament) {
                 const currentRoundMatches = tournament.bracket[tournament.currentRound - 1];
-                const playerMatch = currentRoundMatches.find(m => !m.winner && ((m.player1 as Player).name === player.name || (m.player2 as Player).name === player.name))!;
+                if (!currentRoundMatches) { // Safeguard
+                    console.error("Tournament Error: Cannot find matches for current round.");
+                    return { ...prev, tournament: null, currentEvent: null };
+                }
+
+                const playerMatch = currentRoundMatches.find(m => !m.winner && ((m.player1 as Player).name === player.name || (m.player2 as Player).name === player.name));
+                
+                if (!playerMatch) { // Safeguard
+                    console.error("Tournament Error: Cannot find player's match.");
+                    return { ...prev, tournament: null, currentEvent: null };
+                }
                 
                 const opponent = (playerMatch.player1 as Player).name === player.name ? playerMatch.player2 as Opponent : playerMatch.player1 as Opponent;
 
@@ -401,47 +425,53 @@ function App() {
                 const opponentDamage = Math.max(1, opponent.stats.attack - player.stats.defense) * (Math.random() * 0.4 + 0.8);
                 const playerWon = playerDamage >= opponentDamage;
                 
-                newLog.unshift({ id: newLog.length, year: prev.year, text: `Trận đấu với **${opponent.name}** bắt đầu! Sau một hồi giao tranh kịch liệt, bạn đã **${playerWon ? 'chiến thắng' : 'thất bại'}**!`, isMajor: true });
+                newLog.unshift({ id: newLog.length, year: currentYear, text: `Trận đấu với **${opponent.name}** bắt đầu! Sau một hồi giao tranh kịch liệt, bạn đã **${playerWon ? 'chiến thắng' : 'thất bại'}**!`, isMajor: true });
 
                 if (playerWon) {
                     playerMatch.winner = (playerMatch.player1 as Player).name === player.name ? 'player1' : 'player2';
-                    const roundRewards = [{lt: 1000, cv: 500}, {lt: 2500, cv: 1200}, {lt: 5000, cv: 3000}, {lt: 15000, cv: 8000}];
+                    const roundRewards = [{lt: 500, cv: 250}, {lt: 1250, cv: 600}, {lt: 7500, cv: 4000}]; // Quarter, Semi, Final (Rewards halved)
                     const reward = roundRewards[tournament.currentRound - 1];
-                    player.linhThach += reward.lt;
-                    player.cultivation += reward.cv;
-                    newLog.unshift({ id: newLog.length, year: prev.year, text: `Bạn nhận được ${reward.lt} linh thạch và ${reward.cv} tu vi.`, isMajor: false });
+                    player.linhThach += Math.round(reward.lt * player.linhThachGainModifier);
+                    player.cultivation += Math.round(reward.cv * player.cultivationGainModifier);
+                    newLog.unshift({ id: newLog.length, year: currentYear, text: `Bạn nhận được ${Math.round(reward.lt * player.linhThachGainModifier)} linh thạch và ${Math.round(reward.cv * player.cultivationGainModifier)} tu vi.`, isMajor: false });
                     
-                    if (tournament.currentRound === 2) { // Final for 4-person tourney. For 8 it is 3, for 16 it's 4. Let's make it 4 participants now, 2 rounds
-                         newLog.unshift({ id: newLog.length, year: prev.year, text: `**BẠN LÀ NHÀ VÔ ĐỊCH ĐẠI HỘI THIÊN KIÊU!** Tiếng tăm của bạn vang dội khắp nơi!`, isMajor: true });
+                    if (tournament.currentRound === 3) { 
+                         newLog.unshift({ id: newLog.length, year: currentYear, text: `**BẠN LÀ NHÀ VÔ ĐỊCH ĐẠI HỘI THIÊN KIÊU!** Tiếng tăm của bạn vang dội khắp nơi!`, isMajor: true });
                          const newRankEntry: RankEntry = {
                              rank: prev.geniusRanking.length + 1,
                              name: player.name,
                              realm: player.realm,
-                             year: prev.year + 1,
-                             achievement: `Vô địch Đại Hội Thiên Kiêu lần thứ ${(prev.year + 1 - 16) / TOURNAMENT_INTERVAL}`
+                             year: currentYear,
+                             achievement: `Vô địch Đại Hội Thiên Kiêu lần thứ ${Math.floor((currentYear - 16) / TOURNAMENT_INTERVAL)+1}`
                          };
                          const newRanking = [newRankEntry, ...prev.geniusRanking];
-                         return { ...prev, player, eventLog: newLog, currentEvent: null, tournament: null, geniusRanking: newRanking }
+                         return { ...prev, player, year: currentYear, eventLog: newLog, currentEvent: null, tournament: null, geniusRanking: newRanking }
                     } else {
-                         // Simulate other matches
+                         // Simulate other matches in the current round
                          currentRoundMatches.filter(m => m !== playerMatch).forEach(m => m.winner = Math.random() > 0.5 ? 'player1' : 'player2');
                          
                          const winners = currentRoundMatches.map(m => m.winner === 'player1' ? m.player1 : m.player2);
                          const nextRound: Match[] = [];
                          for(let i=0; i < winners.length; i+=2) {
-                            nextRound.push({player1: winners[i], player2: winners[i+1], winner: null});
+                            if(winners[i+1]) {
+                                nextRound.push({player1: winners[i], player2: winners[i+1], winner: null});
+                            }
                          }
                          tournament.bracket.push(nextRound);
                          tournament.currentRound++;
                          const nextPlayerMatch = nextRound.find(m => (m.player1 as Player).name === player.name || (m.player2 as Player).name === player.name);
                          newEvent = nextPlayerMatch ? createMatchEvent(nextPlayerMatch) : null;
+                         if (!newEvent) { // Safeguard in case player is somehow not in next round
+                             newLog.unshift({ id: newLog.length, year: currentYear, text: `Giải đấu đã kết thúc một cách bí ẩn.`, isMajor: true });
+                             tournament = null;
+                         }
                     }
                 } else { // Player lost
-                    newLog.unshift({ id: newLog.length, year: prev.year, text: `Hành trình của bạn tại Đại Hội Thiên Kiêu đã kết thúc.`, isMajor: true });
+                    newLog.unshift({ id: newLog.length, year: currentYear, text: `Hành trình của bạn tại Đại Hội Thiên Kiêu đã kết thúc.`, isMajor: true });
                     tournament = null;
                 }
             }
-            return { ...prev, player, eventLog: newLog, currentEvent: newEvent, tournament };
+            return { ...prev, player, year: currentYear, eventLog: newLog, currentEvent: newEvent, tournament };
         });
         return;
     }
@@ -458,22 +488,40 @@ function App() {
         let activeSecretRealm = prev.activeSecretRealm;
         let newLogEntries: EventLogEntry[] = [];
 
-        p.age += 1;
+        // Apply passive regen first
+        p.health = Math.min(p.maxHealth, Math.round(p.health + p.maxHealth * 0.1));
 
-        const currentRankDetails = SECT_RANKS.find(r => r.name === p.sectRank);
-        if (currentRankDetails && currentRankDetails.salary > 0) {
-            p.linhThach += currentRankDetails.salary;
-            newLogEntries.push({ id: prev.eventLog.length + 5, year: p.age, text: `Bạn nhận được ${currentRankDetails.salary} linh thạch bổng lộc hàng năm từ chức vụ ${p.sectRank}.`, isMajor: false });
+        p.age += 0.5;
+
+        // Salary check (annually)
+        if (p.age % 1 === 0) {
+            const currentRankDetails = SECT_RANKS.find(r => r.name === p.sectRank);
+            if (currentRankDetails && currentRankDetails.salary > 0) {
+                const salary = Math.round(currentRankDetails.salary * p.linhThachGainModifier);
+                p.linhThach += salary;
+                newLogEntries.push({ id: prev.eventLog.length + 5, year: p.age, text: `Bạn nhận được ${salary} linh thạch bổng lộc hàng năm từ chức vụ ${p.sectRank}.`, isMajor: false });
+            }
         }
         
+        // --- CULTIVATION GAIN ---
+        // Base passive gain
+        const allTalents = Object.values(TALENTS).flat();
+        const talentBonusPerYear = p.talents.reduce((acc, talentId) => {
+            const talentInfo = allTalents.find(t => t.id === talentId);
+            return acc + (talentInfo?.effects.cultivationBonus ?? 0);
+        }, 0);
         const petBonus = p.pets.reduce((acc, pet) => acc + (pet.effects.cultivationBonusPerYear ?? 0), 0);
-        const eventCultivation = choice.effects.cultivationGained ?? 0;
         const techniqueBonus = p.cultivationTechnique?.effects.cultivationBonus ?? 0;
-        const talentBonus = p.talentCultivationBonus ?? 0;
-        p.cultivation += Math.round(eventCultivation * multiplier) + techniqueBonus + talentBonus + petBonus;
+        const basePassiveGain = 15;
+        const totalPassiveGain = ((basePassiveGain + techniqueBonus + talentBonusPerYear + petBonus) / 2) * p.cultivationGainModifier;
+        p.cultivation += totalPassiveGain;
+
+        // Event gain (halved)
+        const eventCultivation = choice.effects.cultivationGained ?? 0;
+        p.cultivation += Math.round(((eventCultivation * multiplier) / 2) * p.cultivationGainModifier);
 
         const eventLinhThach = choice.effects.linhThachChange ?? 0;
-        p.linhThach = Math.max(0, p.linhThach + Math.round(eventLinhThach * multiplier));
+        p.linhThach = Math.max(0, p.linhThach + Math.round(eventLinhThach * multiplier * p.linhThachGainModifier));
 
         p.health = Math.max(0, Math.min(p.maxHealth, p.health + (choice.effects.healthChange ?? 0)));
         
@@ -489,6 +537,9 @@ function App() {
                 effects: newItemData.effects || {},
                 technique: newItemData.technique,
             };
+            if(newItem.effects.cultivation) { // Halve cultivation from items
+                newItem.effects.cultivation = Math.round(newItem.effects.cultivation / 2);
+            }
             p.inventory = [...p.inventory, newItem];
             eventText += ` (Nhận được <strong>${newItem.name}</strong>).`;
         }
@@ -499,6 +550,9 @@ function App() {
                 id: `${Date.now()}-${petData.name}`,
                 ...petData,
             };
+            if (newPet.effects.cultivationBonusPerYear) { // Halve cultivation from pets
+                newPet.effects.cultivationBonusPerYear = Math.round(newPet.effects.cultivationBonusPerYear / 2);
+            }
             p.pets = [...p.pets, newPet];
             newLogEntries.push({ id: prev.eventLog.length + 4, year: p.age, text: `Bạn đã nhận được sủng vật mới: <strong>${newPet.name} (${newPet.species})</strong>!`, isMajor: true });
         }
@@ -515,6 +569,9 @@ function App() {
 
         if (choice.effects.newQuest && !p.activeQuest && !activeSecretRealm) {
             const quest = choice.effects.newQuest;
+            if (quest.reward.cultivation) { // Halve cultivation from quests
+                quest.reward.cultivation = Math.round(quest.reward.cultivation / 2);
+            }
             p.activeQuest = { ...quest, progress: 0 };
             newLogEntries.push({ id: prev.eventLog.length + 300, year: p.age, text: `**Nhiệm vụ mới:** Bạn đã nhận nhiệm vụ "${quest.title}".`, isMajor: true });
         }
@@ -544,6 +601,19 @@ function App() {
                  npcs[npcIndex].status = 'Bạn đời';
                  newLogEntries.push({ id: prev.eventLog.length + 2, year: p.age, text: `Bạn và <strong>${npcs[npcIndex].name}</strong> đã chính thức trở thành đạo lữ, cùng nhau bước trên con đường tu tiên!`, isMajor: true });
              }
+        }
+        
+        if (choice.effects.dualCultivation) {
+            const currentRealmIndex = REALMS.findIndex(r => r.name === p.realm);
+            const currentRealm = REALMS[currentRealmIndex];
+            const nextRealm = REALMS[currentRealmIndex + 1];
+            
+            const cultivationNeeded = (nextRealm?.minCultivation ?? (currentRealm.minCultivation * 5)) - currentRealm.minCultivation;
+            // Reward is 10% of the cultivation needed for next realm + a base amount
+            const dualCultivationBonus = Math.round((cultivationNeeded * 0.1 + 100) / 2 * p.cultivationGainModifier);
+            
+            p.cultivation += dualCultivationBonus;
+            eventText += ` Cùng đạo lữ song tu, bạn nhận được ${dualCultivationBonus} tu vi, cảm giác như sắp đột phá!`;
         }
 
         newLogEntries.push({ id: prev.eventLog.length, year: p.age, text: eventText, isMajor: false });
@@ -589,18 +659,40 @@ function App() {
   
   const loadGameFromState = (loadedState: GameState) => {
     if(loadedState.player) {
+        // --- MIGRATION LOGIC ---
+        // Migration: Old string talent to new string[] talents
+        if ((loadedState.player as any).talent && !loadedState.player.talents) {
+            const oldTalentName = (loadedState.player as any).talent;
+            const allTalents = Object.values(TALENTS).flat();
+            const foundTalent = allTalents.find(t => t.name === oldTalentName);
+            loadedState.player.talents = foundTalent ? [foundTalent.id] : [];
+             delete (loadedState.player as any).talent;
+             delete (loadedState.player as any).talentCultivationBonus;
+        }
+
+        // Migration: Old year-based quest/realm progress to turn-based progress
+        if (loadedState.player.activeQuest) {
+            // A simple heuristic to check if it's an old save file
+            // Old durations were very small (e.g., 1-5 years). New turn durations will be similar.
+            // This is tricky. A better way is to check if progress is a float.
+            // Let's assume old saves might have non-integer progress values.
+             if (loadedState.player.activeQuest.progress % 1 !== 0) {
+                loadedState.player.activeQuest.duration *= 2;
+                loadedState.player.activeQuest.progress *= 2;
+             }
+        }
+        if (loadedState.activeSecretRealm) {
+             if (loadedState.activeSecretRealm.progress % 1 !== 0) {
+                loadedState.activeSecretRealm.duration *= 2;
+                loadedState.activeSecretRealm.progress *= 2;
+             }
+        }
+        // --- END MIGRATION ---
+
         if(loadedState.player.gender === undefined) loadedState.player.gender = 'Nam';
         if(loadedState.player.activeQuest === undefined) loadedState.player.activeQuest = null;
         if(loadedState.difficulty === undefined) loadedState.difficulty = 'trung bình';
-        if(loadedState.player.talent === undefined) {
-            loadedState.player.talent = 'Nguỵ Linh Căn';
-            loadedState.player.talentCultivationBonus = 0;
-        }
         if (loadedState.player.avatarUrl === undefined) loadedState.player.avatarUrl = '';
-        if (loadedState.player.activeQuest && loadedState.player.activeQuest.duration === undefined) {
-            alert("Tệp lưu của bạn chứa một nhiệm vụ từ phiên bản cũ. Nhiệm vụ đó đã được hủy bỏ.");
-            loadedState.player.activeQuest = null;
-        }
         if (loadedState.tournament === undefined) loadedState.tournament = null;
         if (loadedState.geniusRanking === undefined) loadedState.geniusRanking = [];
         if (loadedState.npcs === undefined) {
@@ -628,6 +720,24 @@ function App() {
         }
         if (loadedState.activeSecretRealm === undefined) {
             loadedState.activeSecretRealm = null;
+        }
+        if (loadedState.shopInventory === undefined) {
+            loadedState.shopInventory = [];
+        }
+        if (loadedState.shopLastRefreshed === undefined) {
+            loadedState.shopLastRefreshed = 0;
+        }
+        if (loadedState.player.family === undefined) {
+            loadedState.player.family = 'thương nhân';
+        }
+        if (loadedState.player.linhThachGainModifier === undefined) {
+            loadedState.player.linhThachGainModifier = 1.0;
+        }
+        if (loadedState.player.cultivationGainModifier === undefined) {
+            loadedState.player.cultivationGainModifier = 1.0;
+        }
+        if (loadedState.player.talents === undefined) {
+            loadedState.player.talents = ['nguỵ'];
         }
     }
     setGameState(loadedState);
@@ -681,6 +791,59 @@ function App() {
 
   const handleCloseItemModal = () => {
       setSelectedItem(null);
+  };
+    
+  const handleOpenShop = () => {
+    setGameState(prev => {
+        if (!prev.player) return prev;
+        const needsRefresh = prev.year >= prev.shopLastRefreshed + SHOP_REFRESH_INTERVAL || prev.shopInventory.length === 0;
+        if (needsRefresh) {
+            const newStock = generateShopStock(prev.player.realm);
+            return {
+                ...prev,
+                shopInventory: newStock,
+                shopLastRefreshed: Math.floor(prev.year),
+            }
+        }
+        return prev;
+    });
+    setShopOpen(true);
+  };
+  
+  const handleBuyItem = (item: Item) => {
+    setGameState(prev => {
+      if (!prev.player || !item.cost || prev.player.linhThach < item.cost) return prev;
+      
+      const player = { ...prev.player };
+      player.linhThach -= item.cost;
+      player.inventory.push({ ...item, id: `${Date.now()}-${item.name}` }); // Give it a unique ID
+
+      const shopInventory = prev.shopInventory.filter(i => i.id !== item.id);
+      
+      const newLogEntry: EventLogEntry = { id: prev.eventLog.length, year: prev.year, text: `Bạn đã mua <strong>${item.name}</strong> với giá ${item.cost} linh thạch.`, isMajor: false };
+
+      return { ...prev, player, shopInventory, eventLog: [newLogEntry, ...prev.eventLog] };
+    });
+  };
+
+  const handleSellItem = (item: Item) => {
+      setGameState(prev => {
+        if (!prev.player) return prev;
+        const player = { ...prev.player };
+        
+        const itemIndex = player.inventory.findIndex(i => i.id === item.id);
+        if (itemIndex === -1) return prev;
+
+        const sellPrice = Math.floor((item.cost ?? 10) * 0.4); // Sell for 40% of original price, or 4 if no price
+        const finalSellPrice = Math.round(sellPrice * player.linhThachGainModifier);
+        
+        player.linhThach += finalSellPrice;
+        player.inventory.splice(itemIndex, 1);
+
+        const newLogEntry: EventLogEntry = { id: prev.eventLog.length, year: prev.year, text: `Bạn đã bán <strong>${item.name}</strong> và nhận được ${finalSellPrice} linh thạch.`, isMajor: false };
+
+        return { ...prev, player, eventLog: [newLogEntry, ...prev.eventLog] };
+      });
   };
 
   const handleEquipItem = (item: Item) => {
@@ -745,8 +908,9 @@ function App() {
               logText += ` Phục hồi ${healed} sinh mệnh.`
           }
           if(item.effects.cultivation) {
-              player.cultivation += item.effects.cultivation;
-              logText += ` Nhận được ${item.effects.cultivation} tu vi.`
+              const cultivationGain = Math.round(item.effects.cultivation * player.cultivationGainModifier);
+              player.cultivation += cultivationGain;
+              logText += ` Nhận được ${cultivationGain} tu vi.`
           }
           
           player.inventory.splice(itemIndex, 1);
@@ -813,7 +977,7 @@ function App() {
               <PlayerInfoPanel player={player} npcs={npcs} onItemClick={handleItemInteraction} activeSecretRealm={activeSecretRealm} />
                {nextTournamentIn > 0 && 
                 <div className="panel-bg text-center p-2 mt-4 text-amber-300 shrink-0">
-                    Đại Hội Thiên Kiêu sau {nextTournamentIn} năm
+                    Đại Hội Thiên Kiêu sau {Math.ceil(nextTournamentIn)} năm
                 </div>
                }
             </div>
@@ -824,7 +988,7 @@ function App() {
                     <div className="panel-bg flex flex-col flex-grow min-h-0 p-6 gap-4">
                         <EventLogPanel eventLog={eventLog} />
                         {currentEvent ? ( <EventChoicePanel event={currentEvent} onSelectChoice={handleChoiceSelection} /> ) : (
-                          <GameControls onNextYear={handleNextYear} onTravel={() => setMapOpen(true)} isLoading={isLoading} error={error} disabled={!!currentEvent || !!activeSecretRealm} hasTraveledThisYear={hasTraveledThisYear} player={player} activeSecretRealm={activeSecretRealm} />
+                          <GameControls onNextYear={handleNextYear} onTravel={() => setMapOpen(true)} onOpenShop={handleOpenShop} isLoading={isLoading} error={error} disabled={!!currentEvent} hasTraveledThisYear={hasTraveledThisYear} player={player} activeSecretRealm={activeSecretRealm} />
                         )}
                     </div>
                 )}
@@ -923,6 +1087,13 @@ function App() {
            .btn-warning:hover:not(:disabled) {
              background-color: #d97706;
           }
+           .btn-shop {
+             background-color: #7c3aed;
+             color: white;
+          }
+           .btn-shop:hover:not(:disabled) {
+             background-color: #8b5cf6;
+          }
           .btn-event {
              background-color: rgba(30, 41, 59, 0.8);
              border: 1px solid rgba(56, 189, 248, 0.3);
@@ -957,7 +1128,7 @@ function App() {
                 {currentView === 'playing' && gameState.player ? (
                     <>
                         <h1 className="text-4xl md:text-5xl font-bold text-cyan-300 tracking-wider font-serif">Tu tiên 1 click</h1>
-                        <p className="text-gray-400 mt-1">Năm thứ {gameState.year - 15} trên con đường tu luyện</p>
+                        <p className="text-gray-400 mt-1">Năm thứ {Math.floor(gameState.year - 15)} trên con đường tu luyện</p>
                     </>
                 ) : <div className="h-[76px]"></div>}
             </div>
@@ -978,6 +1149,15 @@ function App() {
         {isMapOpen && gameState.player && <MapPanel currentLocation={gameState.player.currentLocation} onTravel={handleTravel} onClose={() => setMapOpen(false)} />}
         {isRankingOpen && <GeniusRankingPanel ranking={gameState.geniusRanking} onClose={() => setRankingOpen(false)} />}
         {isRelationshipPanelOpen && gameState.player && <RelationshipPanel npcs={gameState.npcs} player={gameState.player} onClose={() => setRelationshipPanelOpen(false)} />}
+        {isShopOpen && gameState.player && (
+            <ShopPanel
+                player={gameState.player}
+                inventory={gameState.shopInventory}
+                onClose={() => setShopOpen(false)}
+                onBuy={handleBuyItem}
+                onSell={handleSellItem}
+            />
+        )}
         {selectedItem && (
             <ItemInteractionModal 
                 item={selectedItem.item}

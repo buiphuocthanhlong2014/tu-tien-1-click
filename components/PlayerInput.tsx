@@ -4,6 +4,7 @@ import { Player, SecretRealm } from '../types';
 interface GameControlsProps {
   onNextYear: () => void;
   onTravel: () => void;
+  onOpenShop: () => void;
   isLoading: boolean;
   error: string | null;
   disabled: boolean;
@@ -12,14 +13,16 @@ interface GameControlsProps {
   activeSecretRealm: SecretRealm | null;
 }
 
-export const GameControls: React.FC<GameControlsProps> = ({ onNextYear, onTravel, isLoading, error, disabled, hasTraveledThisYear, player, activeSecretRealm }) => {
-  let nextYearButtonText = 'Trải qua một năm';
+export const GameControls: React.FC<GameControlsProps> = ({ onNextYear, onTravel, onOpenShop, isLoading, error, disabled, hasTraveledThisYear, player, activeSecretRealm }) => {
+  let nextYearButtonText = 'Trải qua nửa năm';
   if (activeSecretRealm) {
-    nextYearButtonText = `Thám Hiểm (${activeSecretRealm.progress + 1}/${activeSecretRealm.duration} năm)`;
+    nextYearButtonText = `Thám Hiểm (${activeSecretRealm.progress + 1}/${activeSecretRealm.duration} lượt)`;
   } else if (player?.activeQuest && player.currentLocation === player.activeQuest.location) {
     const quest = player.activeQuest;
-    nextYearButtonText = `Làm nhiệm vụ (${quest.progress + 1}/${quest.duration} năm)`;
+    nextYearButtonText = `Làm nhiệm vụ (${quest.progress + 1}/${quest.duration} lượt)`;
   }
+
+  const canVisitShop = player?.currentLocation === 'Thành Trấn';
 
   return (
     <div className="pt-4 border-t border-gray-700/50">
@@ -28,10 +31,19 @@ export const GameControls: React.FC<GameControlsProps> = ({ onNextYear, onTravel
         <button
           onClick={onTravel}
           disabled={isLoading || disabled || hasTraveledThisYear || !!activeSecretRealm}
-          className="btn btn-warning w-full sm:w-auto text-lg"
+          className="btn btn-warning w-full sm:w-auto"
         >
           Di Chuyển
         </button>
+        {canVisitShop && (
+             <button
+                onClick={onOpenShop}
+                disabled={isLoading || disabled || !!activeSecretRealm}
+                className="btn btn-shop w-full sm:w-auto"
+                >
+                Cửa Hàng
+            </button>
+        )}
         <button
           onClick={onNextYear}
           disabled={isLoading || disabled}

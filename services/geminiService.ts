@@ -11,12 +11,57 @@ export const REALMS: Realm[] = [
 ];
 
 export const SECT_RANKS = [
-    { name: 'Ngoại Môn Đệ Tử', realmRequired: 'Luyện Khí', salary: 50 },
-    { name: 'Nội Môn Đệ Tử', realmRequired: 'Trúc Cơ', salary: 200 },
-    { name: 'Trưởng Lão', realmRequired: 'Kết Đan', salary: 1000 },
-    { name: 'Phó Tông Chủ', realmRequired: 'Nguyên Anh', salary: 5000 },
-    { name: 'Tông Chủ', realmRequired: 'Hóa Thần', salary: 20000 },
+    { name: 'Ngoại Môn Đệ Tử', realmRequired: 'Luyện Khí', salary: 25 },
+    { name: 'Nội Môn Đệ Tử', realmRequired: 'Trúc Cơ', salary: 100 },
+    { name: 'Trưởng Lão', realmRequired: 'Kết Đan', salary: 500 },
+    { name: 'Phó Tông Chủ', realmRequired: 'Nguyên Anh', salary: 2500 },
+    { name: 'Tông Chủ', realmRequired: 'Hóa Thần', salary: 10000 },
 ];
+
+export const TECHNIQUES: CultivationTechnique[] = [
+    { name: 'Nguyên Khí Chân Quyết', rank: 'Linh phẩm', description: 'Công pháp chính thống của tông môn, trung bình nhưng ổn định.', effects: { cultivationBonus: 6 } },
+    { name: 'Linh Hỏa Quyết', rank: 'Linh phẩm', description: 'Hấp thụ hỏa linh khí, tu luyện nhanh nhưng bá đạo.', effects: { cultivationBonus: 8 } },
+    { name: 'Huyền Băng Lục', rank: 'Linh phẩm', description: 'Hấp thụ thủy linh khí, tâm cảnh thanh minh, tu vi vững chắc.', effects: { cultivationBonus: 7.5 } },
+    { name: 'Vạn Kiếm Quy Tông', rank: 'Tiên phẩm', description: 'Công pháp kiếm tu thượng thừa, nghe đồn có thể chém rách không gian.', effects: { cultivationBonus: 15 } }
+];
+
+export interface Talent {
+    id: string;
+    name: string;
+    description: string;
+    effects: {
+        cultivationBonus?: number;
+        maxHealthModifier?: number;
+        attackBonus?: number;
+        defenseBonus?: number;
+        linhThachGainModifier?: number;
+        cultivationGainModifier?: number;
+    }
+}
+
+export interface TalentsByCategory {
+    [category: string]: Talent[];
+}
+
+export const TALENTS: TalentsByCategory = {
+    'Linh Căn (Bắt buộc)': [
+        { id: 'thiên', name: 'Thiên Linh Căn', description: '+20 TV/lượt', effects: { cultivationBonus: 40 } },
+        { id: 'song', name: 'Song Linh Căn', description: '+15 TV/lượt', effects: { cultivationBonus: 30 } },
+        { id: 'tam', name: 'Tam Linh Căn', description: '+10 TV/lượt', effects: { cultivationBonus: 20 } },
+        { id: 'tứ', name: 'Tứ Linh Căn', description: '+5 TV/lượt', effects: { cultivationBonus: 10 } },
+        { id: 'nguỵ', name: 'Nguỵ Linh Căn', description: '+0 TV/lượt', effects: { cultivationBonus: 0 } },
+    ],
+    'Thể Chất (Tùy chọn)': [
+        { id: 'long_toc', name: 'Dòng Máu Long Tộc', description: '+10% HP tối đa', effects: { maxHealthModifier: 0.1 } },
+        { id: 'kiem_the', name: 'Kiếm Thể', description: '+10 Công khởi điểm', effects: { attackBonus: 10 } },
+        { id: 'van_doc', name: 'Vạn Độc Bất Xâm', description: '+10 Thủ khởi điểm', effects: { defenseBonus: 10 } },
+    ],
+    'Vận Mệnh (Tùy chọn)': [
+        { id: 'than_may_man', name: 'Thần May Mắn', description: '+10% Linh Thạch nhận được', effects: { linhThachGainModifier: 0.1 } },
+        { id: 'van_rui', name: 'Kẻ Vận Rủi', description: 'Tu vi nhận -10%, +5 Công & Thủ', effects: { cultivationGainModifier: -0.1, attackBonus: 5, defenseBonus: 5 } },
+    ]
+};
+
 
 interface SectBonus {
     attack?: number;
@@ -86,6 +131,7 @@ export const LOCATIONS = [
     { id: 'forest', name: 'Rừng Rậm', description: 'Một khu rừng cổ xưa đầy rẫy yêu thú và cơ duyên.' },
     { id: 'city', name: 'Thành Trấn', description: 'Một trung tâm buôn bán sầm uất, nơi có thể tìm thấy mọi thứ.' },
     { id: 'sea', name: 'Biển Cả', description: 'Vùng biển sâu thẳm ẩn chứa nhiều bí mật và kho báu.' },
+    { id: 'cave', name: 'Hang Động', description: 'Một hang động tối tăm, ẩm ướt, có thể tìm thấy khoáng thạch quý hiếm.' },
     { id: 'thien-kiem', name: 'Thiên Kiếm Tông', description: 'Nơi các kiếm tu mài giũa kiếm ý của mình.' },
     { id: 'van-duoc', name: 'Vạn Dược Cốc', description: 'Không khí tràn ngập mùi thuốc, là thánh địa của các luyện đan sư.' },
     { id: 'huyen-phu', name: 'Huyền Phù Môn', description: 'Những ngọn núi lơ lửng được kết nối bằng các cây cầu ánh sáng.' },
@@ -139,10 +185,71 @@ export const INITIAL_NPCS: NPC[] = [
     }
 ];
 
+export const SHOP_ITEMS_POOL: Omit<Item, 'id'>[] = [
+    // --- Consumables (Healing) ---
+    { name: 'Hồi Phục Đan (Hạ phẩm)', type: 'consumable', description: 'Hồi phục 50 HP.', effects: { health: 50 }, cost: 20 },
+    { name: 'Hồi Phục Đan (Hạ phẩm)', type: 'consumable', description: 'Hồi phục 50 HP.', effects: { health: 50 }, cost: 20 },
+    { name: 'Hồi Phục Đan (Trung phẩm)', type: 'consumable', description: 'Hồi phục 200 HP.', effects: { health: 200 }, cost: 80 },
+    { name: 'Hồi Phục Đan (Trung phẩm)', type: 'consumable', description: 'Hồi phục 200 HP.', effects: { health: 200 }, cost: 80 },
+    { name: 'Bách Thảo Lộ', type: 'consumable', description: 'Tinh hoa trăm loại linh thảo, hồi phục 500 HP.', effects: { health: 500 }, cost: 250 },
+    { name: 'Ngọc Tủy Cao', type: 'consumable', description: 'Cao dược quý hiếm, hồi phục 1500 HP.', effects: { health: 1500 }, cost: 800 },
+    // --- Consumables (Cultivation) ---
+    { name: 'Tụ Linh Đan', type: 'consumable', description: 'Tăng 50 Tu vi.', effects: { cultivation: 50 }, cost: 150 },
+    { name: 'Trúc Cơ Đan', type: 'consumable', description: 'Hỗ trợ đột phá Trúc Cơ, tăng 250 Tu vi.', effects: { cultivation: 250 }, cost: 800 },
+    { name: 'Ngưng Nguyên Đan', type: 'consumable', description: 'Tăng 1000 Tu vi.', effects: { cultivation: 1000 }, cost: 3500 },
+    { name: 'Phá Anh Đan', type: 'consumable', description: 'Tăng 5000 Tu vi.', effects: { cultivation: 5000 }, cost: 18000 },
+    // --- Weapons ---
+    { name: 'Thiết Kiếm', type: 'weapon', description: 'Một thanh kiếm sắt bình thường.', effects: { attack: 8 }, cost: 50 },
+    { name: 'Bạch Ngọc Kiếm', type: 'weapon', description: 'Kiếm làm từ bạch ngọc, vừa đẹp vừa sắc.', effects: { attack: 25 }, cost: 300 },
+    { name: 'Huyền Thiết Trọng Kiếm', type: 'weapon', description: 'Cực kỳ nặng, uy lực kinh người.', effects: { attack: 80 }, cost: 2000 },
+    { name: 'Tử Điện Đao', type: 'weapon', description: 'Lưỡi đao ẩn chứa lôi điện chi lực.', effects: { attack: 200 }, cost: 8000 },
+    // --- Armor ---
+    { name: 'Da Thú Giáp', type: 'armor', description: 'Giáp làm từ da yêu thú cấp thấp.', effects: { defense: 10 }, cost: 40 },
+    { name: 'Thiết Giáp', type: 'armor', description: 'Một bộ giáp sắt chắc chắn.', effects: { defense: 30 }, cost: 250 },
+    { name: 'Linh Tàm Bảo Giáp', type: 'armor', description: 'Dệt từ tơ linh tàm, nhẹ mà bền.', effects: { defense: 90 }, cost: 2200 },
+    { name: 'Long Lân Giáp', type: 'armor', description: 'Chế từ vảy của một loại Giao Long.', effects: { defense: 220 }, cost: 9000 },
+    // --- Technique Scrolls ---
+    { name: 'Bí tịch: Linh Hỏa Quyết', type: 'techniqueScroll', description: 'Ghi lại công pháp Linh Hỏa Quyết. Đọc để học.', cost: 20000, technique: TECHNIQUES[1], effects: {} },
+    { name: 'Bí tịch: Huyền Băng Lục', type: 'techniqueScroll', description: 'Ghi lại công pháp Huyền Băng Lục. Đọc để học.', cost: 18000, technique: TECHNIQUES[2], effects: {} },
+];
+
+export function generateShopStock(playerRealm: string): Item[] {
+    const realmIndex = REALMS.findIndex(r => r.name === playerRealm);
+    let stock: Item[] = [];
+    const numItems = 8 + Math.floor(Math.random() * 5); // 8 to 12 items
+
+    const availableItems = SHOP_ITEMS_POOL.filter(item => {
+        const itemCost = item.cost ?? 0;
+        if (realmIndex <= 1) return itemCost < 500; // Luyện Khí, Trúc Cơ
+        if (realmIndex <= 2) return itemCost < 4000; // Kết Đan (allow mid-tier scrolls)
+        if (realmIndex <= 3) return itemCost < 25000; // Nguyên Anh (allow high-tier scrolls)
+        return true; // Hóa Thần trở lên
+    });
+    
+    // Ensure at least 2 healing items
+    const healingItems = availableItems.filter(item => item.type === 'consumable' && item.effects.health);
+    for(let i=0; i<2 && healingItems.length > 0; i++) {
+        const itemProto = healingItems[Math.floor(Math.random() * healingItems.length)];
+        const finalCost = Math.round((itemProto.cost ?? 0) * 1.5);
+        stock.push({ ...itemProto, cost: finalCost, id: `${Date.now()}-shop-${stock.length}` });
+    }
+
+    while (stock.length < numItems && availableItems.length > 0) {
+        const itemProto = availableItems[Math.floor(Math.random() * availableItems.length)];
+        // Add some variety, don't add the same item too many times
+        if (stock.filter(i => i.name === itemProto.name).length < 2) {
+             const finalCost = Math.round((itemProto.cost ?? 0) * 1.5);
+             stock.push({ ...itemProto, cost: finalCost, id: `${Date.now()}-shop-${stock.length}` });
+        }
+    }
+
+    return stock.sort((a,b) => (a.cost ?? 0) - (b.cost ?? 0));
+}
+
 export interface CharacterCreationOptions {
     name: string;
     gender: Gender;
-    talent: 'thiên' | 'song' | 'tam' | 'tứ' | 'nguỵ';
+    talents: string[];
     family: 'thương nhân' | 'võ gia' | 'suy tàn';
     avatarUrl: string;
     sect: SectChoice;
@@ -161,15 +268,7 @@ export class GeminiService {
 
     public async startNewGame(options: CharacterCreationOptions): Promise<{ player: Player }> {
         
-        const talentMap = {
-            'thiên': { name: 'Thiên Linh Căn', bonus: 20 },
-            'song': { name: 'Song Linh Căn', bonus: 15 },
-            'tam': { name: 'Tam Linh Căn', bonus: 10 },
-            'tứ': { name: 'Tứ Linh Căn', bonus: 5 },
-            'nguỵ': { name: 'Nguỵ Linh Căn', bonus: 0 },
-        };
-    
-        const selectedTalent = talentMap[options.talent];
+        const allTalents = Object.values(TALENTS).flat();
         const chosenSect = SECTS[options.sect];
 
         let initialPlayer: Player = {
@@ -190,19 +289,36 @@ export class GeminiService {
                 rank: 'Phàm phẩm',
                 description: 'Công pháp cơ bản để dẫn linh khí vào cơ thể.',
                 effects: {
-                    cultivationBonus: 5,
+                    cultivationBonus: 2.5,
                 }
             },
             currentLocation: chosenSect.name,
             activeQuest: null,
-            talent: selectedTalent.name,
-            talentCultivationBonus: selectedTalent.bonus,
+            talents: options.talents,
             avatarUrl: options.avatarUrl,
             spouseId: null,
             sect: chosenSect.name,
+            family: options.family,
             sectRank: SECT_RANKS[0].name,
             pets: [],
+            linhThachGainModifier: 1.0,
+            cultivationGainModifier: 1.0,
         };
+
+        // Apply talent effects
+        options.talents.forEach(talentId => {
+            const talent = allTalents.find(t => t.id === talentId);
+            if (talent) {
+                const talentEffects = talent.effects;
+                 if (talentEffects.maxHealthModifier) initialPlayer.maxHealth *= (1 + talentEffects.maxHealthModifier);
+                 if (talentEffects.attackBonus) initialPlayer.stats.attack += talentEffects.attackBonus;
+                 if (talentEffects.defenseBonus) initialPlayer.stats.defense += talentEffects.defenseBonus;
+                 if (talentEffects.linhThachGainModifier) initialPlayer.linhThachGainModifier += talentEffects.linhThachGainModifier;
+                 if (talentEffects.cultivationGainModifier) initialPlayer.cultivationGainModifier += talentEffects.cultivationGainModifier;
+            }
+        });
+        initialPlayer.maxHealth = Math.round(initialPlayer.maxHealth);
+        initialPlayer.health = initialPlayer.maxHealth;
 
         // Apply family bonus
         switch (options.family) {
@@ -219,7 +335,7 @@ export class GeminiService {
                     rank: 'Phàm phẩm',
                     description: 'Một công pháp cổ xưa từ gia tộc đã suy tàn, hiệu quả hơn bình thường.',
                     effects: {
-                        cultivationBonus: 8,
+                        cultivationBonus: 4,
                     }
                 };
                 break;
@@ -253,7 +369,7 @@ export class GeminiService {
                 name: 'Thiên Kiếm Quyết',
                 rank: 'Phàm phẩm',
                 description: 'Công pháp nhập môn của Thiên Kiếm Tông, tăng cường sự sắc bén của linh khí.',
-                effects: { cultivationBonus: 7 },
+                effects: { cultivationBonus: 3.5 },
             };
         }
         
@@ -266,7 +382,7 @@ export class GeminiService {
         const sectDescription = sectKey ? SECTS[sectKey].description : "một tông môn vô danh";
 
         const questContext = player.activeQuest 
-            ? `Người chơi đang có nhiệm vụ: "${player.activeQuest.title}" (${player.activeQuest.description}). Nhiệm vụ này yêu cầu ${player.activeQuest.duration} năm để hoàn thành.`
+            ? `Người chơi đang có nhiệm vụ: "${player.activeQuest.title}" (${player.activeQuest.description}). Nhiệm vụ này cần tổng cộng ${player.activeQuest.duration} lượt để hoàn thành, đã qua ${player.activeQuest.progress} lượt.`
             : "Người chơi hiện không có nhiệm vụ nào.";
             
         const npcContext = npcs.length > 0
@@ -278,32 +394,41 @@ export class GeminiService {
             : "LƯU Ý: Tùy chọn nội dung người lớn (18+) đang TẮT. Giữ cho tất cả các sự kiện phù hợp với mọi lứa tuổi, tập trung vào tu luyện, phiêu lưu và tình bạn trong sáng.";
 
         const validLocations = LOCATIONS.map(l => `'${l.name}'`).join(', ');
+        
+        const allTalentsFlat = Object.values(TALENTS).flat();
+        const playerTalentNames = player.talents.map(id => allTalentsFlat.find(t => t.id === id)?.name).filter(Boolean).join(', ');
 
         const systemInstruction = `Bạn là người quản trò cho một trò chơi mô phỏng 'Tu Tiên'. Dựa vào trạng thái và vị trí của người chơi, hãy tạo một sự kiện có 2-3 lựa chọn. Chỉ trả lời bằng một đối tượng JSON hợp lệ, không có markdown.
         - ${nsfwContext}
         - Người chơi là một đệ tử ${player.gender === 'Nữ' ? 'nữ' : 'nam'} của **${player.sect}** với chức vụ là **${player.sectRank}**. Đặc điểm của tông môn: ${sectDescription}.
+        - Các thiên phú của người chơi: ${playerTalentNames || 'Không có'}.
         - ${questContext}
         - Vị trí hiện tại của người chơi là '${player.currentLocation}', nơi được mô tả là: '${locationInfo}'.
         - ${npcContext}
         - **LUẬT CHƠI QUAN TRỌNG**: Game có hệ thống Đại Hội Thiên Kiêu và giới hạn tuổi. Bạn không cần tạo sự kiện cho chúng.
         - **Cơ Duyên Lớn (Hiếm):** Thỉnh thoảng (tỉ lệ rất thấp, <5%), tạo ra các sự kiện trọng đại như khám phá Bí Cảnh hoặc nhận được Sủng Vật.
+        - **Địa điểm mới: Hang Động.** Có thể tạo các sự kiện liên quan đến khai thác khoáng thạch, khám phá hang động.
         
         QUY TẮC TẠO SỰ KIỆN:
-        1.  **Sự kiện NPC (Ưu tiên):** Thỉnh thoảng (khoảng 30% cơ hội), tạo sự kiện liên quan đến một trong các NPC. Sự kiện có thể tương tác với NPC khác giới tính và tạo cơ hội phát triển tình cảm nếu hợp lý.
-        2.  **Xử lý Nhiệm vụ:** Nếu người chơi đang ở sai vị trí nhiệm vụ, tạo sự kiện nhắc nhở họ di chuyển đến ${player.activeQuest?.location ?? 'địa điểm nhiệm vụ'}.
-        3.  **Nhận Nhiệm vụ mới:** Nếu người chơi đang ở trong tông môn của họ (${player.sect}) và không có nhiệm vụ, ưu tiên tạo sự kiện nhận nhiệm vụ mới. **Trường "location" cho nhiệm vụ mới PHẢI LÀ MỘT trong các địa điểm hợp lệ sau: ${validLocations}.**
-        4.  **Vật Phẩm Mới:** 'newItem' là một đối tượng. Nó có thể là trang bị, đan dược, hoặc bí tịch.
+        1.  **Sự kiện NPC:** Thỉnh thoảng (khoảng 30% cơ hội), tạo sự kiện liên quan đến một trong các NPC. Sự kiện có thể tương tác với NPC khác giới tính và tạo cơ hội phát triển tình cảm nếu hợp lý. **Giảm tần suất:** Nhân vật Tiêu Y Tiên là một người bí ẩn, hãy để cô ấy xuất hiện với tần suất thấp hơn đáng kể so với các NPC khác.
+        2.  **Tình Cảm Sâu Sắc:**
+            - **Tỏ Tình:** Nếu một NPC có điểm hảo cảm > 200 và người chơi chưa có đạo lữ (bạn đời), bạn có thể tạo sự kiện NPC đó tỏ tình. Lựa chọn đồng ý PHẢI có hiệu ứng \`"newSpouse": { "npcId": "..." }\`.
+            - **Song Tu (18+):** Nếu người chơi ĐÃ CÓ đạo lữ và tùy chọn 18+ đang BẬT, bạn có thể tạo ra các sự kiện lãng mạn, thân mật dẫn đến "Song Tu". Lựa chọn này NÊN có hiệu ứng \`"dualCultivation": true\` để thưởng một lượng lớn tu vi. Mô tả sự kiện có thể trưởng thành hơn.
+        3.  **Xử lý Nhiệm vụ:** Nếu người chơi đang ở sai vị trí nhiệm vụ, tạo sự kiện nhắc nhở họ di chuyển đến ${player.activeQuest?.location ?? 'địa điểm nhiệm vụ'}.
+        4.  **Nhận Nhiệm vụ mới:** Nếu người chơi đang ở trong tông môn của họ (${player.sect}) và không có nhiệm vụ, ưu tiên tạo sự kiện nhận nhiệm vụ mới. **Trường "location" cho nhiệm vụ mới PHẢI LÀ MỘT trong các địa điểm hợp lệ sau: ${validLocations}.** Thời gian làm nhiệm vụ (\`duration\`) tính bằng LƯỢT (mỗi lượt là 6 tháng).
+        5.  **Vật Phẩm Mới:** 'newItem' là một đối tượng. Nó có thể là trang bị, đan dược, hoặc bí tịch.
             - \`type\`: 'weapon', 'armor', 'accessory', 'consumable', 'techniqueScroll'.
             - \`effects\`: Một đối tượng chứa \`attack\`, \`defense\`, \`health\`, \`cultivation\`. Chỉ áp dụng cho trang bị và đan dược.
             - \`technique\`: Một đối tượng \`CultivationTechnique\`. Chỉ áp dụng cho \`techniqueScroll\`.
-            - **Hãy tạo ra các loại đan dược mạnh hơn (ví dụ: tăng hàng trăm, hàng nghìn tu vi) và trang bị đa dạng hơn, đặc biệt khi người chơi ở cảnh giới cao.**
-        5.  **Sủng Vật Mới:** 'newPet' là một đối tượng để ban thưởng sủng vật đồng hành.
+            - **Hãy tạo ra các loại đan dược mạnh hơn và trang bị đa dạng hơn, đặc biệt khi người chơi ở cảnh giới cao. Lượng tu vi nhận được nên hợp lý, tránh cho quá nhiều.**
+            - **Trong Bí Cảnh, bạn có thể thưởng cho người chơi những vật phẩm cực hiếm như Bí tịch Công pháp Tiên phẩm.**
+        6.  **Sủng Vật Mới:** 'newPet' là một đối tượng để ban thưởng sủng vật đồng hành.
             - \`name\`, \`species\`, \`description\`: Mô tả về sủng vật.
             - \`effects\`: Bắt buộc phải có \`cultivationBonusPerYear\` để tăng tu vi mỗi năm cho người chơi.
-        6.  **Bí Cảnh:** 'startSecretRealm' là một đối tượng để bắt đầu một cuộc thám hiểm lớn.
+        7.  **Bí Cảnh:** 'startSecretRealm' là một đối tượng để bắt đầu một cuộc thám hiểm lớn.
             - Sự kiện này PHẢI hiếm.
-            - \`name\`, \`description\`, \`duration\` (số năm), \`reward\` (phần thưởng lớn khi hoàn thành).
-        7.  **KHÔNG SỬ DỤNG:** Tuyệt đối không tạo hiệu ứng "questProgress".
+            - \`name\`, \`description\`, \`duration\` (số lượt), \`reward\` (phần thưởng lớn khi hoàn thành).
+        8.  **KHÔNG SỬ DỤNG:** Tuyệt đối không tạo hiệu ứng "questProgress".
 
         CẤU TRÚC JSON:
         { 
@@ -312,10 +437,10 @@ export class GeminiService {
             { 
               "text": "Mô tả lựa chọn", 
               "effects": { 
-                "cultivationGained": 10, "healthChange": -5, "linhThachChange": 20,
+                "cultivationGained": 5, "healthChange": -5, "linhThachChange": 10,
                 "relationshipChange": { "npcId": "npc_lam_van", "points": 10 },
-                "newItem": { "name": "Huyết Tinh Đan", "type": "consumable", "description": "Đan dược giúp tăng cường tu vi.", "effects": { "cultivation": 500 } },
-                "newQuest": { "id": "q1", "title": "Săn Yêu Thú", "description": "Hạ gục Yêu Lang trong rừng.", "location": "Rừng Rậm", "difficulty": "đơn giản", "duration": 1, "reward": { "linhThach": 50 } }
+                "newItem": { "name": "Huyết Tinh Đan", "type": "consumable", "description": "Đan dược giúp tăng cường tu vi.", "effects": { "cultivation": 250 } },
+                "newQuest": { "id": "q1", "title": "Săn Yêu Thú", "description": "Hạ gục Yêu Lang trong rừng.", "location": "Rừng Rậm", "difficulty": "đơn giản", "duration": 2, "reward": { "linhThach": 50 } }
               } 
             },
             {
@@ -323,17 +448,21 @@ export class GeminiService {
               "effects": {
                 "newPet": {
                   "name": "Tiểu Bạch", "species": "Linh Hồ", "description": "Một con hồ ly trắng tinh, có vẻ rất có linh tính.",
-                  "effects": { "cultivationBonusPerYear": 20 }
+                  "effects": { "cultivationBonusPerYear": 10 }
                 }
               }
+            },
+            {
+               "text": "Cùng đạo lữ song tu.",
+               "effects": { "dualCultivation": true }
             },
             {
               "text": "Tham gia thám hiểm Bí Cảnh cùng tông môn.",
               "effects": {
                 "startSecretRealm": {
                   "name": "Vạn Cổ Yêu Động", "description": "Một bí cảnh cổ xưa vừa được trưởng lão phát hiện, nghe đồn chứa đựng cơ duyên đại thụ.",
-                  "duration": 5,
-                  "reward": { "cultivation": 10000, "linhThach": 5000 }
+                  "duration": 10,
+                  "reward": { "cultivation": 2500, "item": { "name": "Bí tịch: Vạn Kiếm Quy Tông", "type": "techniqueScroll", "description": "Một công pháp kiếm tu thất truyền.", "technique": { "name": "Vạn Kiếm Quy Tông", "rank": "Tiên phẩm", "description": "Công pháp kiếm tu thượng thừa, nghe đồn có thể chém rách không gian.", "effects": { "cultivationBonus": 15 } } } }
                 }
               }
             }
@@ -377,19 +506,25 @@ export class GeminiService {
             return parsedData;
         } catch (e) {
             console.error("Failed to parse AI response into JSON or invalid structure:", e);
+            const allTalents = Object.values(TALENTS).flat();
+            const talentBonusPerYear = player.talents.reduce((acc, talentId) => {
+                const talentInfo = allTalents.find(t => t.id === talentId);
+                return acc + (talentInfo?.effects.cultivationBonus ?? 0);
+            }, 0);
+            
             return {
-                description: "Một năm trôi qua trong tĩnh lặng khi bạn đang ở " + player.currentLocation + ". Bạn quyết định tập trung vào việc gì?",
+                description: "Nửa năm trôi qua trong tĩnh lặng khi bạn đang ở " + player.currentLocation + ". Bạn quyết định tập trung vào việc gì?",
                 choices: [
                     {
                         text: "Chuyên tâm tu luyện.",
                         effects: {
-                            cultivationGained: 25 + (player.cultivationTechnique?.effects.cultivationBonus ?? 0),
+                            cultivationGained: 6 + ((player.cultivationTechnique?.effects.cultivationBonus ?? 0) / 2) + (talentBonusPerYear / 2),
                         }
                     },
                     {
                         text: "Tịnh dưỡng, phục hồi.",
                         effects: {
-                            healthChange: 20
+                            healthChange: 10
                         }
                     }
                 ]
