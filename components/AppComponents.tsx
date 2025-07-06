@@ -2,6 +2,8 @@
 
 
 
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import { GameState, Player, Item, EventLogEntry, YearlyEvent, EventChoice, ActiveQuest, Quest, Difficulty, Opponent, Tournament, RankEntry, Match, NPC, RelationshipStatus, SectChoice, ItemType, Gender, SecretRealm, Auction, AuctionItem } from '../types';
 import { GeminiService, REALMS, LOCATIONS, CharacterCreationOptions, SECTS, TALENTS } from '../services/geminiService';
@@ -257,7 +259,7 @@ export const UpdateLogPanel: React.FC<{ onClose: () => void }> = ({ onClose }) =
         </ul>
         <h3 className="text-xl font-semibold text-yellow-300 mt-4">Phiên bản 15.0.0 - "Truyền Âm Phù"</h3>
         <ul className="list-disc pl-5 space-y-2">
-             <li><strong>Hệ thống Truyền Âm Phù:</strong> Thêm tính năng cho phép người chơi và các NPC thân thiết (>100 hảo cảm) chủ động liên lạc với nhau qua tin nhắn.</li>
+             <li><strong>Hệ thống Truyền Âm Phù:</strong> Thêm tính năng cho phép người chơi và các NPC thân thiết ({'>'}100 hảo cảm) chủ động liên lạc với nhau qua tin nhắn.</li>
              <li><strong>Tương tác mới:</strong> Trong bảng "Nhân Mạch", bạn có thể chủ động "Gửi Truyền Âm" để bắt đầu hội thoại, tăng cường mối quan hệ.</li>
              <li><strong>Sự kiện ngẫu nhiên mới:</strong> Các NPC thân thiết giờ đây có thể ngẫu nhiên gửi tin nhắn cho bạn, tạo ra các sự kiện đời thường và cơ hội phát triển tình cảm.</li>
         </ul>
