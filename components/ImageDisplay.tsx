@@ -1,9 +1,10 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface ImageDisplayProps {
   imageUrl: string;
   isLoading: boolean;
+  altText?: string;
 }
 
 const Spinner: React.FC = () => (
@@ -15,16 +16,34 @@ const Spinner: React.FC = () => (
   </div>
 );
 
-export const ImageDisplay: React.FC<ImageDisplayProps> = ({ imageUrl, isLoading }) => {
+export const ImageDisplay: React.FC<ImageDisplayProps> = ({ imageUrl, isLoading, altText }) => {
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setHasError(false); // Reset error state when image URL changes
+  }, [imageUrl]);
+
+  const getInitials = (text: string = '') => {
+    if (!text) return '?';
+    const words = text.trim().split(' ');
+    if (words.length > 1) {
+        return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
+    }
+    return text.charAt(0).toUpperCase();
+  }
+
   return (
-    <div className="relative w-full h-full bg-black rounded-full shadow-2xl overflow-hidden border-4 border-cyan-500/50 transition-all duration-500">
-      {imageUrl && (
+    <div className="relative w-full h-full bg-black rounded-full shadow-2xl overflow-hidden border-4 border-cyan-500/50 transition-all duration-500 flex items-center justify-center text-center">
+      {imageUrl && !hasError ? (
         <img
-          key={imageUrl} // Force re-render on new image for animation
+          key={imageUrl} 
           src={imageUrl}
-          alt="Chân dung nhân vật"
+          alt={altText || "Chân dung nhân vật"}
           className="w-full h-full object-cover animate-fade-in"
+          onError={() => setHasError(true)}
         />
+      ) : (
+        <span className="font-serif text-3xl text-cyan-300 select-none">{getInitials(altText)}</span>
       )}
       {isLoading && <Spinner />}
       <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent rounded-full pointer-events-none"></div>

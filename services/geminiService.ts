@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { Player, Realm, Item, ItemType, CultivationTechnique, YearlyEvent, Quest, Difficulty, NPC, SectChoice, Gender } from '../types';
+import { Player, Realm, Item, ItemType, CultivationTechnique, YearlyEvent, Quest, Difficulty, NPC, SectChoice, Gender, AuctionItem } from '../types';
 
 export const REALMS: Realm[] = [
     { name: 'Luyện Khí', minCultivation: 0, maxAge: 100 },
@@ -143,49 +143,106 @@ export const INITIAL_NPCS: NPC[] = [
         id: 'npc_lam_van',
         name: 'Lam Vân',
         gender: 'Nữ',
-        description: 'Một nữ tu lạnh lùng nhưng có trái tim ấm áp, thiên phú kiếm đạo kinh người.',
-        realm: 'Luyện Khí',
-        cultivation: 10,
+        description: 'Đệ tử chân truyền của Thiên Kiếm Tông. Lạnh lùng như băng, kiếm pháp sắc bén vô tình, nhưng sâu trong nội tâm là một trái tim giữ vững chính nghĩa và một nỗi cô đơn không ai thấu.',
+        realm: 'Trúc Cơ',
+        cultivation: 1100,
         relationshipPoints: 0,
         status: 'Xa lạ',
         isLover: false,
+        avatarUrl: 'https://i.pinimg.com/736x/a6/06/87/a606871c577037f94191bec853f7c223.jpg',
     },
     {
         id: 'npc_thach_nghi',
         name: 'Thạch Nghị',
         gender: 'Nam',
-        description: 'Hành sự bá đạo, luôn coi mình là trung tâm. Sẵn sàng làm mọi thứ để mạnh hơn.',
-        realm: 'Luyện Khí',
-        cultivation: 15,
-        relationshipPoints: -5,
+        description: 'Thiếu chủ của Thạch gia, một gia tộc luyện thể cổ xưa. Tính cách bá đạo, tự phụ, coi trời bằng vung. Mục tiêu duy nhất là trở thành kẻ mạnh nhất, vượt qua cái bóng của tổ phụ.',
+        realm: 'Trúc Cơ',
+        cultivation: 1250,
+        relationshipPoints: -10,
         status: 'Xa lạ',
         isLover: false,
+        avatarUrl: 'https://i.pinimg.com/736x/87/c1/67/87c167e93ead41b8a892b67f18544e3f.jpg',
     },
     {
         id: 'npc_tieu_y_tien',
         name: 'Tiêu Y Tiên',
         gender: 'Nữ',
-        description: 'Tinh thông y thuật và dụng độc, tính cách thất thường, khó đoán.',
-        realm: 'Luyện Khí',
-        cultivation: 8,
+        description: 'Tán tu bí ẩn, nổi danh với y thuật và độc thuật song tuyệt. Tính cách thất thường, lúc cứu người, lúc hại người, hành tung bất định, không ai biết được quá khứ của nàng.',
+        realm: 'Kết Đan',
+        cultivation: 5500,
         relationshipPoints: 5,
         status: 'Người quen',
         isLover: false,
+        avatarUrl: 'https://i.pinimg.com/originals/a9/a7/a7/a9a7a7d432b508f6575971a24d5d85c8.jpg',
     },
     {
         id: 'npc_han_thien',
         name: 'Hàn Thiên',
         gender: 'Nam',
-        description: 'Một tán tu trầm mặc, ít nói nhưng tâm tư sâu sắc và hành sự cẩn trọng.',
-        realm: 'Luyện Khí',
-        cultivation: 12,
+        description: 'Một tán tu có vẻ ngoài bình thường nhưng tâm tư sâu như biển. Hành sự cẩn trọng đến mức đáng sợ, dường như luôn tính trước ba bước. Che giấu một bí mật động trời.',
+        realm: 'Trúc Cơ',
+        cultivation: 1500,
         relationshipPoints: 0,
         status: 'Xa lạ',
         isLover: false,
+        avatarUrl: 'https://i.pinimg.com/736x/67/6f/30/676f30d0725a3962639080b031b2a95c.jpg',
+    },
+    {
+        id: 'npc_diep_thanh_ca',
+        name: 'Diệp Thanh Ca',
+        gender: 'Nữ',
+        description: 'Tiểu sư muội được yêu quý nhất của Vạn Dược Cốc. Ngây thơ, trong sáng, có tài năng luyện đan hiếm có. Luôn mang theo mình một giỏ linh thảo và nụ cười ấm áp.',
+        realm: 'Luyện Khí',
+        cultivation: 800,
+        relationshipPoints: 15,
+        status: 'Người quen',
+        isLover: false,
+        avatarUrl: 'https://i.pinimg.com/736x/21/24/a7/2124a7731758c035b3d0d346757b01d3.jpg',
+    },
+    {
+        id: 'npc_lieu_nhu_yen',
+        name: 'Liễu Như Yên',
+        gender: 'Nữ',
+        description: 'Thánh nữ của Hợp Hoan Phái, vẻ đẹp yêu kiều, quyến rũ chết người. Mỗi lời nói, cử chỉ đều mang theo mị lực khó cưỡng. Nguy hiểm và đầy cám dỗ.',
+        realm: 'Kết Đan',
+        cultivation: 6000,
+        relationshipPoints: -5,
+        status: 'Xa lạ',
+        isLover: false,
+        avatarUrl: 'https://i.pinimg.com/originals/77/b1/d6/77b1d620579a7774785499092497645f.jpg',
+    },
+    {
+        id: 'npc_moc_nguyet_anh',
+        name: 'Mộc Nguyệt Anh',
+        gender: 'Nữ',
+        description: 'Nữ tu của Huyền Phù Môn, chuyên về trận pháp và phù lục. Trầm tính, ít nói, thích nghiên cứu các cổ tự và trận đồ hơn là giao tiếp với người khác.',
+        realm: 'Trúc Cơ',
+        cultivation: 1300,
+        relationshipPoints: 0,
+        status: 'Xa lạ',
+        isLover: false,
+        avatarUrl: 'https://i.pinimg.com/originals/a4/0c/ac/a40cac5a557d342398ef364e7828033c.jpg',
+    },
+    {
+        id: 'npc_tuu_kiem_tien',
+        name: 'Tửu Kiếm Tiên',
+        gender: 'Nam',
+        description: 'Lão già say xỉn bạn tình cờ gặp ở Thành Trấn, lưng đeo hồ lô rượu, tay cầm kiếm gỗ. Trông có vẻ lôi thôi nhưng đôi khi lại nói ra những lời đầy triết lý và kiếm ý sâu xa.',
+        realm: 'Không rõ',
+        cultivation: 99999,
+        relationshipPoints: 0,
+        status: 'Xa lạ',
+        isLover: false,
+        avatarUrl: 'https://i.pinimg.com/736x/d4/3b/b1/d43bb1342f1f4e1577c21950e7b8c7e0.jpg',
     }
 ];
 
 export const SHOP_ITEMS_POOL: Omit<Item, 'id'>[] = [
+    // --- Materials ---
+    { name: 'Thiết Quặng', type: 'material', description: 'Quặng sắt thô, dùng để rèn trang bị.', cost: 15, effects: {} },
+    { name: 'Linh Thạch Thô', type: 'material', description: 'Đá chứa linh khí chưa được tinh luyện, có thể dùng trong trận pháp.', cost: 40, effects: {} },
+    { name: 'Huyền Thiết Quặng', type: 'material', description: 'Một loại khoáng thạch quý hiếm, cực kỳ cứng rắn.', cost: 120, effects: {} },
+    { name: 'Yêu Đan (Hạ phẩm)', type: 'material', description: 'Nội đan của yêu thú cấp thấp, chứa đựng yêu lực.', cost: 200, effects: {} },
     // --- Consumables (Healing) ---
     { name: 'Hồi Phục Đan (Hạ phẩm)', type: 'consumable', description: 'Hồi phục 50 HP.', effects: { health: 50 }, cost: 20 },
     { name: 'Hồi Phục Đan (Hạ phẩm)', type: 'consumable', description: 'Hồi phục 50 HP.', effects: { health: 50 }, cost: 20 },
@@ -212,6 +269,42 @@ export const SHOP_ITEMS_POOL: Omit<Item, 'id'>[] = [
     { name: 'Bí tịch: Linh Hỏa Quyết', type: 'techniqueScroll', description: 'Ghi lại công pháp Linh Hỏa Quyết. Đọc để học.', cost: 20000, technique: TECHNIQUES[1], effects: {} },
     { name: 'Bí tịch: Huyền Băng Lục', type: 'techniqueScroll', description: 'Ghi lại công pháp Huyền Băng Lục. Đọc để học.', cost: 18000, technique: TECHNIQUES[2], effects: {} },
 ];
+
+export const AUCTION_ITEM_POOL: Omit<Item, 'id'>[] = [
+    { name: 'Bí tịch: Vạn Kiếm Quy Tông', type: 'techniqueScroll', description: 'Công pháp kiếm tu thượng thừa, nghe đồn có thể chém rách không gian.', cost: 150000, technique: TECHNIQUES[3], effects: {} },
+    { name: 'Phá Giới Đan', type: 'consumable', description: 'Đan dược cực phẩm, tăng mạnh tu vi, hỗ trợ phá cảnh giới.', effects: { cultivation: 20000 }, cost: 80000 },
+    { name: 'Huyết Long Giáp', type: 'armor', description: 'Giáp được rèn từ vảy và máu của Huyết Long, phòng ngự vô song.', effects: { defense: 500 }, cost: 120000 },
+    { name: 'Thí Thần Thương', type: 'weapon', description: 'Một cây thương cổ xưa ẩn chứa sát khí kinh thiên.', effects: { attack: 450 }, cost: 120000 },
+    { name: 'Cửu Chuyển Hoàn Hồn Đan', type: 'consumable', description: 'Tiên đan trong truyền thuyết, có thể cải tử hồi sinh (hồi đầy HP và tăng tối đa HP).', effects: { health: 99999 }, cost: 200000 },
+    { name: 'Không Gian Giới Chỉ', type: 'accessory', description: 'Một chiếc nhẫn chứa không gian riêng, tăng sức tấn công và phòng thủ.', effects: { attack: 50, defense: 50 }, cost: 90000 }
+];
+
+export function generateAuctionItems(playerRealm: string): AuctionItem[] {
+    const realmIndex = REALMS.findIndex(r => r.name === playerRealm);
+    const auctionItems: AuctionItem[] = [];
+    const numItems = 3 + Math.floor(Math.random() * 2); // 3 to 4 items
+
+    const availableItems = [...AUCTION_ITEM_POOL].filter(item => {
+        if (realmIndex < 2 && item.cost! > 100000) return false;
+        if (realmIndex < 3 && item.cost! > 160000) return false;
+        return true;
+    });
+
+    while (auctionItems.length < numItems && availableItems.length > 0) {
+        const itemProto = availableItems.splice(Math.floor(Math.random() * availableItems.length), 1)[0];
+        const startingBid = Math.round((itemProto.cost ?? 50000) * 0.7);
+        auctionItems.push({
+            item: { ...itemProto, cost: itemProto.cost, id: `${Date.now()}-auction-${auctionItems.length}` },
+            startingBid: startingBid,
+            currentBid: startingBid,
+            highestBidderId: null,
+            highestBidderName: null,
+            status: 'ongoing',
+        });
+    }
+    return auctionItems;
+}
+
 
 export function generateShopStock(playerRealm: string): Item[] {
     const realmIndex = REALMS.findIndex(r => r.name === playerRealm);
@@ -398,77 +491,63 @@ export class GeminiService {
         const allTalentsFlat = Object.values(TALENTS).flat();
         const playerTalentNames = player.talents.map(id => allTalentsFlat.find(t => t.id === id)?.name).filter(Boolean).join(', ');
 
-        const systemInstruction = `Bạn là người quản trò cho một trò chơi mô phỏng 'Tu Tiên'. Dựa vào trạng thái và vị trí của người chơi, hãy tạo một sự kiện có 2-3 lựa chọn. Chỉ trả lời bằng một đối tượng JSON hợp lệ, không có markdown.
+        const systemInstruction = `Bạn là người quản trò cho một trò chơi mô phỏng 'Tu Tiên'. Dựa vào trạng thái của người chơi, hãy tạo một sự kiện có 2-4 lựa chọn. Chỉ trả lời bằng một đối tượng JSON hợp lệ, không có markdown.
         - ${nsfwContext}
         - Người chơi là một đệ tử ${player.gender === 'Nữ' ? 'nữ' : 'nam'} của **${player.sect}** với chức vụ là **${player.sectRank}**. Đặc điểm của tông môn: ${sectDescription}.
+        - Gia tộc người chơi: **${player.family}**.
         - Các thiên phú của người chơi: ${playerTalentNames || 'Không có'}.
         - ${questContext}
         - Vị trí hiện tại của người chơi là '${player.currentLocation}', nơi được mô tả là: '${locationInfo}'.
         - ${npcContext}
-        - **LUẬT CHƠI QUAN TRỌNG**: Game có hệ thống Đại Hội Thiên Kiêu và giới hạn tuổi. Bạn không cần tạo sự kiện cho chúng.
-        - **Cơ Duyên Lớn (Hiếm):** Thỉnh thoảng (tỉ lệ rất thấp, <5%), tạo ra các sự kiện trọng đại như khám phá Bí Cảnh hoặc nhận được Sủng Vật.
-        - **Địa điểm mới: Hang Động.** Có thể tạo các sự kiện liên quan đến khai thác khoáng thạch, khám phá hang động.
+        - **LUẬT CHƠI QUAN TRỌNG**: Game có hệ thống Đại Hội Thiên Kiêu, Đấu Giá Hội và giới hạn tuổi. Bạn không cần tạo sự kiện cho chúng.
         
         QUY TẮC TẠO SỰ KIỆN:
+        0.  **Sáng Tạo & Đa Dạng:** Hãy sáng tạo! Tạo ra những tình huống bất ngờ, những cơ duyên lạ lùng, những âm mưu phức tạp, hoặc những khoảnh khắc đời thường ý nghĩa. Khai thác sâu hơn vào bối cảnh của tông môn, gia tộc, và các mối quan hệ NPC. Đừng lặp lại các loại sự kiện quá thường xuyên.
         1.  **Sự kiện NPC:** Thỉnh thoảng (khoảng 30% cơ hội), tạo sự kiện liên quan đến một trong các NPC. Sự kiện có thể tương tác với NPC khác giới tính và tạo cơ hội phát triển tình cảm nếu hợp lý. **Giảm tần suất:** Nhân vật Tiêu Y Tiên là một người bí ẩn, hãy để cô ấy xuất hiện với tần suất thấp hơn đáng kể so với các NPC khác.
-        2.  **Tình Cảm Sâu Sắc:**
-            - **Tỏ Tình:** Nếu một NPC có điểm hảo cảm > 200 và người chơi chưa có đạo lữ (bạn đời), bạn có thể tạo sự kiện NPC đó tỏ tình. Lựa chọn đồng ý PHẢI có hiệu ứng \`"newSpouse": { "npcId": "..." }\`.
+        2.  **Truyền Âm Phù (NPC chủ động):** Nếu một NPC có điểm hảo cảm >= 100 và chưa phải là đạo lữ, có 15% cơ hội tạo một sự kiện họ chủ động gửi tin nhắn cho bạn. 'description' nên là: 'Bạn nhận được truyền âm phù từ [NPC Name]: "[Nội dung tin nhắn]"'. Các lựa chọn là lời đáp lại của người chơi, có hiệu ứng tăng hảo cảm nhẹ.
+        3.  **Tình Cảm Sâu Sắc:**
+            - **Tỏ Tình:** Nếu một NPC có điểm hảo cảm > 200 và người chơi chưa có đạo lữ, bạn có thể tạo sự kiện NPC đó tỏ tình. Lựa chọn đồng ý PHẢI có hiệu ứng \`"newSpouse": { "npcId": "..." }\`.
             - **Song Tu (18+):** Nếu người chơi ĐÃ CÓ đạo lữ và tùy chọn 18+ đang BẬT, bạn có thể tạo ra các sự kiện lãng mạn, thân mật dẫn đến "Song Tu". Lựa chọn này NÊN có hiệu ứng \`"dualCultivation": true\` để thưởng một lượng lớn tu vi. Mô tả sự kiện có thể trưởng thành hơn.
-        3.  **Xử lý Nhiệm vụ:** Nếu người chơi đang ở sai vị trí nhiệm vụ, tạo sự kiện nhắc nhở họ di chuyển đến ${player.activeQuest?.location ?? 'địa điểm nhiệm vụ'}.
-        4.  **Nhận Nhiệm vụ mới:** Nếu người chơi đang ở trong tông môn của họ (${player.sect}) và không có nhiệm vụ, ưu tiên tạo sự kiện nhận nhiệm vụ mới. **Trường "location" cho nhiệm vụ mới PHẢI LÀ MỘT trong các địa điểm hợp lệ sau: ${validLocations}.** Thời gian làm nhiệm vụ (\`duration\`) tính bằng LƯỢT (mỗi lượt là 6 tháng).
-        5.  **Vật Phẩm Mới:** 'newItem' là một đối tượng. Nó có thể là trang bị, đan dược, hoặc bí tịch.
-            - \`type\`: 'weapon', 'armor', 'accessory', 'consumable', 'techniqueScroll'.
-            - \`effects\`: Một đối tượng chứa \`attack\`, \`defense\`, \`health\`, \`cultivation\`. Chỉ áp dụng cho trang bị và đan dược.
+        4.  **Lựa Chọn May Rủi:** Đối với các lựa chọn có kết quả không chắc chắn (ví dụ: đột phá mạo hiểm, trộm cắp, thuyết phục một nhân vật khó tính, khám phá một nơi nguy hiểm), bạn có thể tùy chọn thêm trường \`"successChance": <số_nguyên_từ_1_đến_100>\`. Ví dụ: \`"text": "Thử đột nhập vào kho tàng", "successChance": 40, "effects": { "newItem": ... }\`. **Hiệu ứng trong 'effects' chỉ áp dụng khi thành công.** Game sẽ tự xử lý hậu quả khi thất bại. Nếu bạn không cung cấp, lựa chọn được coi là thành công 100%.
+        5.  **Xử lý Nhiệm vụ:** Nếu người chơi đang ở sai vị trí nhiệm vụ, tạo sự kiện nhắc nhở họ di chuyển đến ${player.activeQuest?.location ?? 'địa điểm nhiệm vụ'}.
+        6.  **Nhận Nhiệm vụ mới:** Nếu người chơi đang ở trong tông môn của họ (${player.sect}) và không có nhiệm vụ, ưu tiên tạo sự kiện nhận nhiệm vụ mới.
+            - **Vị trí & Thời gian:** Trường "location" cho nhiệm vụ mới PHẢI LÀ MỘT trong các địa điểm hợp lệ sau: ${validLocations}. Thời gian (\`duration\`) tính bằng LƯỢT (mỗi lượt là 6 tháng).
+            - **Rủi ro & Tổn thất:** Bắt buộc thêm trường \`"healthCostPerTurn"\` vào mỗi nhiệm vụ. Đây là lượng HP người chơi mất MỖI LƯỢT làm nhiệm vụ. Chi phí này phải hợp lý: nhiệm vụ an toàn (giao hàng, đưa thư) mất 0-5 HP; nhiệm vụ thu thập (hái thuốc ở nơi nguy hiểm) mất 5-15 HP; nhiệm vụ chiến đấu (săn yêu thú, diệt trừ ma tu) mất 10-30 HP.
+            - **Nhiệm vụ Đa dạng:** Các nhiệm vụ thu thập vật phẩm (như hái linh dược) nên có rủi ro tiềm ẩn (ví dụ: yêu thú canh gác) được mô tả trong nhiệm vụ và phản ánh trong \`healthCostPerTurn\`.
+        7.  **Vật Phẩm Mới:** 'newItem' là một đối tượng. Nó có thể là trang bị, đan dược, bí tịch hoặc nguyên liệu.
+            - \`type\`: 'weapon', 'armor', 'accessory', 'consumable', 'techniqueScroll', 'material'.
+            - \`effects\`: Một đối tượng chứa \`attack\`, \`defense\`, \`health\`, \`cultivation\`. Chỉ áp dụng cho trang bị và đan dược. Đối với 'material', hãy để \`effects\` là một đối tượng trống.
             - \`technique\`: Một đối tượng \`CultivationTechnique\`. Chỉ áp dụng cho \`techniqueScroll\`.
             - **Hãy tạo ra các loại đan dược mạnh hơn và trang bị đa dạng hơn, đặc biệt khi người chơi ở cảnh giới cao. Lượng tu vi nhận được nên hợp lý, tránh cho quá nhiều.**
             - **Trong Bí Cảnh, bạn có thể thưởng cho người chơi những vật phẩm cực hiếm như Bí tịch Công pháp Tiên phẩm.**
-        6.  **Sủng Vật Mới:** 'newPet' là một đối tượng để ban thưởng sủng vật đồng hành.
+        8.  **Sủng Vật Mới:** 'newPet' là một đối tượng để ban thưởng sủng vật đồng hành.
             - \`name\`, \`species\`, \`description\`: Mô tả về sủng vật.
             - \`effects\`: Bắt buộc phải có \`cultivationBonusPerYear\` để tăng tu vi mỗi năm cho người chơi.
-        7.  **Bí Cảnh:** 'startSecretRealm' là một đối tượng để bắt đầu một cuộc thám hiểm lớn.
+        9.  **Bí Cảnh:** 'startSecretRealm' là một đối tượng để bắt đầu một cuộc thám hiểm lớn.
             - Sự kiện này PHẢI hiếm.
             - \`name\`, \`description\`, \`duration\` (số lượt), \`reward\` (phần thưởng lớn khi hoàn thành).
-        8.  **KHÔNG SỬ DỤNG:** Tuyệt đối không tạo hiệu ứng "questProgress".
+        10. **KHÔNG SỬ DỤNG:** Tuyệt đối không tạo hiệu ứng "questProgress", "breakthroughAttempt", "auctionAction".
 
         CẤU TRÚC JSON:
         { 
           "description": "Mô tả sự kiện", 
           "choices": [ 
             { 
-              "text": "Mô tả lựa chọn", 
+              "text": "Mô tả lựa chọn chắc chắn", 
               "effects": { 
-                "cultivationGained": 5, "healthChange": -5, "linhThachChange": 10,
-                "relationshipChange": { "npcId": "npc_lam_van", "points": 10 },
-                "newItem": { "name": "Huyết Tinh Đan", "type": "consumable", "description": "Đan dược giúp tăng cường tu vi.", "effects": { "cultivation": 250 } },
-                "newQuest": { "id": "q1", "title": "Săn Yêu Thú", "description": "Hạ gục Yêu Lang trong rừng.", "location": "Rừng Rậm", "difficulty": "đơn giản", "duration": 2, "reward": { "linhThach": 50 } }
+                "cultivationGained": 5, "healthChange": -5, "linhThachChange": 10
               } 
             },
             {
-              "text": "Nhận nuôi con tiểu thú bị thương này.",
+              "text": "Mô tả lựa chọn may rủi",
+              "successChance": 60,
               "effects": {
-                "newPet": {
-                  "name": "Tiểu Bạch", "species": "Linh Hồ", "description": "Một con hồ ly trắng tinh, có vẻ rất có linh tính.",
-                  "effects": { "cultivationBonusPerYear": 10 }
-                }
-              }
-            },
-            {
-               "text": "Cùng đạo lữ song tu.",
-               "effects": { "dualCultivation": true }
-            },
-            {
-              "text": "Tham gia thám hiểm Bí Cảnh cùng tông môn.",
-              "effects": {
-                "startSecretRealm": {
-                  "name": "Vạn Cổ Yêu Động", "description": "Một bí cảnh cổ xưa vừa được trưởng lão phát hiện, nghe đồn chứa đựng cơ duyên đại thụ.",
-                  "duration": 10,
-                  "reward": { "cultivation": 2500, "item": { "name": "Bí tịch: Vạn Kiếm Quy Tông", "type": "techniqueScroll", "description": "Một công pháp kiếm tu thất truyền.", "technique": { "name": "Vạn Kiếm Quy Tông", "rank": "Tiên phẩm", "description": "Công pháp kiếm tu thượng thừa, nghe đồn có thể chém rách không gian.", "effects": { "cultivationBonus": 15 } } } }
-                }
+                 "newItem": { "name": "Huyết Tinh Đan", "type": "consumable", "description": "Đan dược giúp tăng cường tu vi.", "effects": { "cultivation": 250 } }
               }
             }
           ] 
         }
-        - Các khóa trong 'effects' là tùy chọn.`;
+        - Các khóa trong 'effects' và 'successChance' là tùy chọn.`;
 
         const prompt = `Trạng thái người chơi: Giới tính=${player.gender}, Tuổi=${player.age}, Vị trí=${player.currentLocation}, Tông môn=${player.sect}, Chức vụ=${player.sectRank}, Cảnh giới=${player.realm}, Linh thạch=${player.linhThach}. Nhiệm vụ: ${player.activeQuest?.title ?? 'Không'}. Tạo một sự kiện.`;
         
@@ -531,4 +610,69 @@ export class GeminiService {
             };
         }
     };
+
+    public async getNpcConversation(player: Player, npc: NPC): Promise<YearlyEvent> {
+        const systemInstruction = `Bạn là người quản trò (GM) cho một trò chơi mô phỏng 'Tu Tiên'. Người chơi đang chủ động gửi "Truyền Âm Phù" (tin nhắn) đến một NPC thân thiết. Hãy tạo ra một cuộc hội thoại ngắn.
+
+        **Bối cảnh:**
+        - Người gửi: ${player.name} (${player.gender}, ${player.realm})
+        - Người nhận: ${npc.name} (${npc.gender}, ${npc.realm}), mô tả: "${npc.description}"
+        - Mối quan hệ hiện tại: ${npc.status} (${npc.relationshipPoints} điểm)
+
+        **Yêu cầu:**
+        1.  Tạo một đoạn mô tả ngắn về việc NPC nhận được tin nhắn và phản hồi ban đầu. Đây là trường "description".
+        2.  Tạo 2-3 lựa chọn ("choices") cho người chơi để đáp lại.
+        3.  Mỗi lựa chọn phải có hiệu ứng "relationshipChange" để tăng một chút điểm hảo cảm (ví dụ: 3-10 điểm).
+        4.  Chỉ trả lời bằng một đối tượng JSON hợp lệ, không markdown, theo cấu trúc bên dưới.
+
+        **Cấu trúc JSON:**
+        {
+          "description": "NPC nhận được tin nhắn và nói gì đó...",
+          "choices": [
+            {
+              "text": "Lời đáp lại 1 của người chơi (ví dụ: hỏi thăm sức khỏe)",
+              "effects": { "relationshipChange": { "npcId": "${npc.id}", "points": 5 } }
+            },
+            {
+              "text": "Lời đáp lại 2 của người chơi (ví dụ: rủ đi dạo)",
+              "effects": { "relationshipChange": { "npcId": "${npc.id}", "points": 8 } }
+            }
+          ]
+        }`;
+
+        const prompt = `Tạo một cuộc hội thoại cho ${player.name} gửi đến ${npc.name}.`;
+
+        try {
+            const response = await this.ai.models.generateContent({
+                model: "gemini-2.5-flash-preview-04-17",
+                contents: `${systemInstruction}\n\n${prompt}`,
+                config: {
+                    temperature: 0.9,
+                    responseMimeType: "application/json",
+                }
+            });
+
+            let jsonStr = response.text.trim();
+            const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
+            const match = jsonStr.match(fenceRegex);
+            if (match && match[2]) {
+                jsonStr = match[2].trim();
+            }
+            
+            const parsedData = JSON.parse(jsonStr) as YearlyEvent;
+            
+            if (!parsedData.description || !parsedData.choices || parsedData.choices.length === 0) {
+                throw new Error("Invalid conversation structure from AI.");
+            }
+
+            return parsedData;
+
+        } catch (e) {
+            console.error("Failed to generate conversation:", e);
+            return {
+                description: `Truyền âm phù của bạn đã được gửi đi, nhưng không có hồi âm. Có lẽ ${npc.name} đang bận.`,
+                choices: [{ text: "Đóng", effects: {} }]
+            };
+        }
+    }
 }

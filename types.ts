@@ -1,4 +1,4 @@
-export type ItemType = 'weapon' | 'armor' | 'accessory' | 'consumable' | 'techniqueScroll';
+export type ItemType = 'weapon' | 'armor' | 'accessory' | 'consumable' | 'techniqueScroll' | 'material';
 
 export interface CultivationTechnique {
   name: string;
@@ -42,6 +42,7 @@ export interface Quest {
         cultivation?: number;
         item?: Item;
     };
+    healthCostPerTurn?: number;
 }
 
 export interface ActiveQuest extends Quest {
@@ -95,6 +96,7 @@ export interface NPC {
     relationshipPoints: number;
     status: RelationshipStatus;
     isLover: boolean;
+    avatarUrl?: string;
 }
 
 export interface Pet {
@@ -164,6 +166,7 @@ export interface EventLogEntry {
 
 export interface EventChoice {
     text: string;
+    successChance?: number; // Optional success chance percentage (0-100)
     effects: {
         cultivationGained?: number;
         healthChange?: number;
@@ -182,6 +185,7 @@ export interface EventChoice {
         };
         newQuest?: Quest;
         tournamentAction?: 'join' | 'decline' | 'fight';
+        auctionAction?: 'join' | 'decline';
         relationshipChange?: {
             npcId: string;
             points: number;
@@ -199,6 +203,7 @@ export interface EventChoice {
         };
         startSecretRealm?: Omit<SecretRealm, 'id' | 'progress'>;
         dualCultivation?: boolean;
+        breakthroughAttempt?: boolean;
     }
 }
 
@@ -208,6 +213,24 @@ export interface YearlyEvent {
 }
 
 export type Difficulty = 'đơn giản' | 'trung bình' | 'khó' | 'ác mộng';
+
+export interface AuctionItem {
+    item: Item;
+    startingBid: number;
+    currentBid: number;
+    highestBidderId: 'player' | string | null; // string for NPC id
+    highestBidderName: string | null;
+    status: 'ongoing' | 'sold' | 'passed';
+}
+
+export interface Auction {
+    year: number;
+    isActive: boolean;
+    items: AuctionItem[];
+    currentItemIndex: number;
+    log: string[];
+}
+
 
 export interface GameState {
   player: Player | null;
@@ -227,4 +250,7 @@ export interface GameState {
   activeSecretRealm: SecretRealm | null;
   shopInventory: Item[];
   shopLastRefreshed: number;
+  isBreakthroughPending: boolean;
+  auction: Auction | null;
+  activeConversation: { npcId: string; event: YearlyEvent } | null;
 }

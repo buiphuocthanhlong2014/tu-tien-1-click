@@ -1,6 +1,7 @@
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { GameState, Player, Item, EventLogEntry, YearlyEvent, EventChoice, ActiveQuest, Quest, Difficulty, Opponent, Tournament, RankEntry, Match, NPC, RelationshipStatus, SectChoice, ItemType, Gender, Pet, SecretRealm } from './types';
-import { GeminiService, REALMS, SECT_RANKS, CharacterCreationOptions, INITIAL_NPCS, generateShopStock, TECHNIQUES, TALENTS } from './services/geminiService';
+import { GameState, Player, Item, EventLogEntry, YearlyEvent, EventChoice, ActiveQuest, Quest, Difficulty, Opponent, Tournament, RankEntry, Match, NPC, RelationshipStatus, SectChoice, ItemType, Gender, Pet, SecretRealm, Auction } from './types';
+import { GeminiService, REALMS, SECT_RANKS, CharacterCreationOptions, INITIAL_NPCS, generateShopStock, TECHNIQUES, TALENTS, generateAuctionItems } from './services/geminiService';
 import { EventLogPanel } from './components/StoryLog';
 import { GameControls } from './components/PlayerInput';
 import { GameOverlay } from './components/GameOverlay';
@@ -17,12 +18,16 @@ import {
     PlayerInfoPanel,
     TournamentPanel,
     EventChoicePanel,
-    ShopPanel
+    ShopPanel,
+    AuctionPanel,
+    UpcomingEventsPanel,
+    ConversationPanel
 } from './components/AppComponents';
 
 const SAVE_KEY = 'TUTIEN_SAVE_GAME';
 const API_KEY_STORAGE_KEY = 'TUTIEN_API_KEY';
 const TOURNAMENT_INTERVAL = 50;
+const AUCTION_INTERVAL = 20;
 const TOURNAMENT_FEE = 2000;
 const SHOP_REFRESH_INTERVAL = 5; // in years
 
@@ -47,6 +52,9 @@ const initialState: GameState = {
   activeSecretRealm: null,
   shopInventory: [],
   shopLastRefreshed: 0,
+  isBreakthroughPending: false,
+  auction: null,
+  activeConversation: null,
 };
 
 
@@ -63,6 +71,12 @@ function App() {
   const [isRelationshipPanelOpen, setRelationshipPanelOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<{item: Item, isEquipped: boolean} | null>(null);
   const [isShopOpen, setShopOpen] = useState(false);
+  const [isAuctionOpen, setAuctionOpen] = useState(false);
+
+  const gameStateRef = useRef(gameState);
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  });
 
 
   useEffect(() => {
@@ -80,17 +94,79 @@ function App() {
   }, [apiKey]);
   
   useEffect(() => {
-    setLocalSaveExists(!!localStorage.getItem(SAVE_KEY));
-  }, [gameState]);
+    // Check if the auction panel should be open
+    if (gameState.auction?.isActive) {
+        setAuctionOpen(true);
+    } else {
+        setAuctionOpen(false);
+    }
+  }, [gameState.auction?.isActive]);
+
+  useEffect(() => {
+    const checkSave = () => {
+      try {
+        const savedData = localStorage.getItem(SAVE_KEY);
+        if (!savedData) return false;
+        // Basic check to see if it's a valid-looking save
+        const parsed = JSON.parse(savedData);
+        return !!parsed.player;
+      } catch (e) {
+        console.warn("Could not access localStorage. Private browsing or security settings may be preventing save/load functionality.");
+        return false;
+      }
+    };
+    setLocalSaveExists(checkSave());
+  }, [currentView]);
+
+
+  // Auto-save feature
+  useEffect(() => {
+    if (!gameState.gameStarted || gameState.isGameOver) {
+      return;
+    }
+
+    const autoSaveInterval = setInterval(() => {
+      try {
+        const currentState = gameStateRef.current;
+        if (currentState.player) {
+          console.log(`[${new Date().toLocaleTimeString()}] Game auto-saved.`);
+          localStorage.setItem(SAVE_KEY, JSON.stringify(currentState));
+          setLocalSaveExists(true);
+        }
+      } catch (e) {
+        console.error("Auto-save to localStorage failed:", e);
+        // Potentially notify user that auto-save isn't working
+      }
+    }, 10 * 60 * 1000); // 10 minutes
+
+    return () => {
+      clearInterval(autoSaveInterval);
+    };
+  }, [gameState.gameStarted, gameState.isGameOver]);
+
+  const calculateIntervalCountdown = (currentAge: number, interval: number, startAge: number): number => {
+    if (currentAge < startAge) {
+      return interval;
+    }
+    const yearsSinceStart = currentAge - startAge;
+    let remainder = yearsSinceStart % interval;
+
+    // Handle floating point inaccuracies for numbers very close to 0 or interval
+    if (remainder < 0.001 || Math.abs(remainder - interval) < 0.001) {
+        remainder = 0;
+    }
+
+    return remainder === 0 ? 0 : interval - remainder;
+  };
 
   const getRelationshipStatus = (points: number): RelationshipStatus => {
     if (points <= -75) return 'Tử địch';
     if (points <= -25) return 'Kẻ thù';
     if (points < 25) return 'Xa lạ';
     if (points < 50) return 'Người quen';
-    if (points < 75) return 'Bạn bè';
     if (points < 100) return 'Thân thiết';
-    return 'Tri kỷ';
+    if (points < 200) return 'Tri kỷ';
+    return 'Bạn đời';
   };
 
   const progressNpcs = (npcs: NPC[]): NPC[] => {
@@ -142,6 +218,14 @@ function App() {
     }
   }, [geminiService]);
   
+    const createBreakthroughEvent = (): YearlyEvent => ({
+        description: `Linh khí trong cơ thể bạn đang sôi trào, báo hiệu sắp đột phá cảnh giới mới! Mây đen kéo đến, lôi kiếp sắp giáng xuống. Đây là thời khắc quyết định, thành công sẽ phi thăng, thất bại sẽ vạn kiếp bất phục. Bạn có muốn bắt đầu độ kiếp ngay bây giờ?`,
+        choices: [
+            { text: "Bắt đầu độ kiếp!", effects: { breakthroughAttempt: true } },
+            { text: "Chưa phải lúc, ta cần chuẩn bị thêm.", effects: {} }
+        ]
+    });
+
   const createTournamentInvitationEvent = (): YearlyEvent => {
     return {
         description: `Trời đất rung chuyển, linh khí hội tụ! <strong>Đại Hội Thiên Kiêu</strong> lần thứ ${Math.floor((gameState.year + 0.5 - 16) / TOURNAMENT_INTERVAL) + 1} sắp bắt đầu. Đây là cơ hội ngàn năm có một để tranh tài với các thiên kiêu trong thiên hạ, giành lấy danh vọng và phần thưởng vô giá. Phí báo danh là ${TOURNAMENT_FEE} linh thạch. Bạn có muốn tham gia?`,
@@ -151,6 +235,14 @@ function App() {
         ]
     };
   };
+  
+    const createAuctionInvitationEvent = (): YearlyEvent => ({
+        description: `Đấu giá hội 20 năm một lần tại <strong>Giao Lưu Phường</strong> sắp bắt đầu. Đây là cơ hội để sở hữu những bảo vật hiếm có. Bạn có muốn tham dự không?`,
+        choices: [
+            { text: "Tham dự", effects: { auctionAction: 'join' } },
+            { text: "Bỏ qua", effects: { auctionAction: 'decline' } }
+        ]
+    });
 
   const generateTournamentOpponents = (player: Player, difficulty: Difficulty): Opponent[] => {
     const opponentNames = ["Lý Phù Trần", "Hàn Lập", "Vương Lâm", "Mạnh Hạo", "Tần Vũ", "Lâm Động", "Tiêu Viêm", "Diệp Phàm", "Thạch Hạo", "Đường Tam", "Cổ Nguyệt Phương Nguyên", "Bạch Tiểu Thuần", "Tô Minh", "La Phong", "Lâm Minh"];
@@ -197,97 +289,125 @@ function App() {
   const handleNextYear = useCallback(async () => {
     if (!gameState.player || gameState.isLoading || gameState.currentEvent || !geminiService) return;
     
-    const passTime = (prev: GameState): GameState => {
-        if (!prev.player) return prev;
-        
-        let p = { ...prev.player };
-        let newLogEntries: EventLogEntry[] = [];
-        let activeSecretRealm = prev.activeSecretRealm ? { ...prev.activeSecretRealm } : null;
+    let tempState = gameState;
 
-        // Passive regeneration
-        p.health = Math.min(p.maxHealth, Math.round(p.health + p.maxHealth * 0.1));
-        p.age += 0.5;
+    // 1. Pass time and apply passive effects
+    if (!gameState.player) return;
+    let p = { ...gameState.player };
+    let newLogEntries: EventLogEntry[] = [];
+    let activeSecretRealm = gameState.activeSecretRealm ? { ...gameState.activeSecretRealm } : null;
 
-        // Base cultivation gain
-        const allTalents = Object.values(TALENTS).flat();
-        const talentBonusPerYear = p.talents.reduce((acc, talentId) => {
-            const talentInfo = allTalents.find(t => t.id === talentId);
-            return acc + (talentInfo?.effects.cultivationBonus ?? 0);
-        }, 0);
-        const petBonus = p.pets.reduce((acc, pet) => acc + (pet.effects.cultivationBonusPerYear ?? 0), 0);
-        const techniqueBonus = p.cultivationTechnique?.effects.cultivationBonus ?? 0;
-        const basePassiveGain = 15;
-        const totalPassiveGain = ((basePassiveGain + techniqueBonus + talentBonusPerYear + petBonus) / 2) * p.cultivationGainModifier;
-        
-        p.cultivation += totalPassiveGain;
+    p.health = Math.min(p.maxHealth, Math.round(p.health + p.maxHealth * 0.1));
+    p.age += 0.5;
 
-        // Salary check (annually)
-        if (p.age % 1 === 0) {
-            const currentRankDetails = SECT_RANKS.find(r => r.name === p.sectRank);
-            if (currentRankDetails && currentRankDetails.salary > 0) {
-                const salary = Math.round(currentRankDetails.salary * p.linhThachGainModifier);
-                p.linhThach += salary;
-                newLogEntries.push({ id: prev.eventLog.length + 6, year: p.age, text: `Bạn nhận được ${salary} linh thạch bổng lộc hàng năm từ chức vụ ${p.sectRank}.`, isMajor: false });
-            }
+    const allTalents = Object.values(TALENTS).flat();
+    const talentBonusPerYear = p.talents.reduce((acc, talentId) => {
+        const talentInfo = allTalents.find(t => t.id === talentId);
+        return acc + (talentInfo?.effects.cultivationBonus ?? 0);
+    }, 0);
+    const petBonus = p.pets.reduce((acc, pet) => acc + (pet.effects.cultivationBonusPerYear ?? 0), 0);
+    const techniqueBonus = p.cultivationTechnique?.effects.cultivationBonus ?? 0;
+    const basePassiveGain = 15;
+    const totalPassiveGain = ((basePassiveGain + techniqueBonus + talentBonusPerYear + petBonus) / 2) * p.cultivationGainModifier;
+    p.cultivation += totalPassiveGain;
+
+    if (p.age % 1 === 0) {
+        const currentRankDetails = SECT_RANKS.find(r => r.name === p.sectRank);
+        if (currentRankDetails && currentRankDetails.salary > 0) {
+            const salary = Math.round(currentRankDetails.salary * p.linhThachGainModifier);
+            p.linhThach += salary;
+            newLogEntries.push({ id: gameState.eventLog.length + 6, year: p.age, text: `Bạn nhận được ${salary} linh thạch bổng lộc hàng năm từ chức vụ ${p.sectRank}.`, isMajor: false });
         }
-        
-        // Secret Realm Progress
-        if (activeSecretRealm) {
-            activeSecretRealm.progress += 1;
-            if (activeSecretRealm.progress >= activeSecretRealm.duration) {
-                const linhThachReward = Math.round((activeSecretRealm.reward.linhThach ?? 0) * p.linhThachGainModifier);
-                const cultivationReward = Math.round(((activeSecretRealm.reward.cultivation ?? 0) / 2) * p.cultivationGainModifier);
-                p.linhThach += linhThachReward;
-                p.cultivation += cultivationReward;
-                if (activeSecretRealm.reward.item) p.inventory.push(activeSecretRealm.reward.item);
-                newLogEntries.push({ id: prev.eventLog.length, year: p.age, text: `**BÍ CẢNH KẾT THÚC: ${activeSecretRealm.name}!** Sau ${activeSecretRealm.duration / 2} năm thám hiểm, bạn nhận được phần thưởng hậu hĩnh!`, isMajor: true });
-                activeSecretRealm = null; // End of realm
-            } else {
-                newLogEntries.push({ id: prev.eventLog.length, year: p.age, text: `Bạn tiếp tục thám hiểm **${activeSecretRealm.name}**. Tiến độ: ${activeSecretRealm.progress}/${activeSecretRealm.duration} lượt.`, isMajor: false });
-            }
-        } 
-        // Quest Progress
-        else if (p.activeQuest && p.currentLocation === p.activeQuest.location) {
-             p.activeQuest.progress += 1;
-             let quest = p.activeQuest;
-             newLogEntries.push({ id: prev.eventLog.length, year: p.age, text: `Bạn dành nửa năm tại ${p.currentLocation} để hoàn thành nhiệm vụ "${quest.title}". Tiến độ: ${quest.progress}/${quest.duration} lượt.`, isMajor: false });
-             
-             if (quest.progress >= quest.duration) {
-                 const linhThachReward = Math.round((quest.reward.linhThach ?? 0) * p.linhThachGainModifier);
-                 const cultivationReward = Math.round(((quest.reward.cultivation ?? 0) / 2) * p.cultivationGainModifier);
-                 p.linhThach += linhThachReward;
-                 p.cultivation += cultivationReward;
-                 if (quest.reward.item) p.inventory.push(quest.reward.item);
-                 newLogEntries.push({ id: prev.eventLog.length + 400, year: p.age, text: `**NHIỆM VỤ HOÀN THÀNH: ${quest.title}!** Bạn nhận được phần thưởng.`, isMajor: true });
-                 p.activeQuest = null;
-             }
-        }
-        
-        const updatedNpcs = progressNpcs(prev.npcs);
-        const { player: updatedPlayer, log: breakthroughLog, isGameOver: ageDeath } = checkPlayerState(p, newLogEntries, prev.eventLog.length + 500);
-        const newLog = [...breakthroughLog.reverse(), ...prev.eventLog];
-
-        return { ...prev, player: updatedPlayer, year: updatedPlayer.age, eventLog: newLog, npcs: updatedNpcs, isGameOver: ageDeath, hasTraveledThisYear: false, activeSecretRealm };
     }
 
+    let isQuestOrRealmActive = false;
+    if (activeSecretRealm) {
+        isQuestOrRealmActive = true;
+        activeSecretRealm.progress += 1;
+        if (activeSecretRealm.progress >= activeSecretRealm.duration) {
+            const linhThachReward = Math.round((activeSecretRealm.reward.linhThach ?? 0) * p.linhThachGainModifier);
+            const cultivationReward = Math.round(((activeSecretRealm.reward.cultivation ?? 0) / 2) * p.cultivationGainModifier);
+            p.linhThach += linhThachReward;
+            p.cultivation += cultivationReward;
+            if (activeSecretRealm.reward.item) p.inventory.push(activeSecretRealm.reward.item);
+            newLogEntries.push({ id: gameState.eventLog.length, year: p.age, text: `**BÍ CẢNH KẾT THÚC: ${activeSecretRealm.name}!** Sau ${activeSecretRealm.duration / 2} năm thám hiểm, bạn nhận được phần thưởng hậu hĩnh!`, isMajor: true });
+            activeSecretRealm = null;
+        } else {
+            newLogEntries.push({ id: gameState.eventLog.length, year: p.age, text: `Bạn tiếp tục thám hiểm **${activeSecretRealm.name}**. Tiến độ: ${activeSecretRealm.progress}/${activeSecretRealm.duration} lượt.`, isMajor: false });
+        }
+    } 
+    else if (p.activeQuest && p.currentLocation === p.activeQuest.location) {
+        isQuestOrRealmActive = true;
+        let quest = { ...p.activeQuest };
+        quest.progress += 1;
+        p.activeQuest = quest;
+        let questProgressText = `Bạn dành nửa năm tại ${p.currentLocation} để hoàn thành nhiệm vụ "${quest.title}". Tiến độ: ${quest.progress}/${quest.duration} lượt.`;
+        const healthLost = quest.healthCostPerTurn ?? 0;
+        if (healthLost > 0) {
+            p.health -= healthLost;
+            questProgressText += ` Bạn mất <strong>${healthLost}</strong> HP trong quá trình này.`;
+        }
+        newLogEntries.push({ id: gameState.eventLog.length, year: p.age, text: questProgressText, isMajor: false });
+        if (quest.progress >= quest.duration) {
+            const linhThachReward = Math.round((quest.reward.linhThach ?? 0) * p.linhThachGainModifier);
+            const cultivationReward = Math.round(((quest.reward.cultivation ?? 0) / 2) * p.cultivationGainModifier);
+            p.linhThach += linhThachReward;
+            p.cultivation += cultivationReward;
+            if (quest.reward.item) p.inventory.push(quest.reward.item);
+            newLogEntries.push({ id: gameState.eventLog.length + 400, year: p.age, text: `**NHIỆM VỤ HOÀN THÀNH: ${quest.title}!** Bạn nhận được phần thưởng.`, isMajor: true });
+            p.activeQuest = null;
+        }
+    }
 
-    // --- Main Logic Flow ---
-    if (gameState.activeSecretRealm || (gameState.player.activeQuest && gameState.player.currentLocation === gameState.player.activeQuest.location)) {
-        setGameState(passTime);
+    const updatedNpcs = progressNpcs(gameState.npcs);
+    const { player: updatedPlayer, isGameOver: ageDeath } = sanitizeAndCheckPlayerState(p, newLogEntries, gameState.eventLog.length + 500);
+    const newLog = [...newLogEntries.reverse(), ...gameState.eventLog];
+
+    tempState = { ...gameState, player: updatedPlayer, year: updatedPlayer.age, eventLog: newLog, npcs: updatedNpcs, isGameOver: ageDeath, hasTraveledThisYear: false, activeSecretRealm };
+    
+    // 2. Check for breakthrough
+    let breakthroughTriggered = false;
+    if (tempState.player && !tempState.isBreakthroughPending) {
+        if (tempState.player.cultivation >= tempState.player.cultivationForNextRealm) {
+            breakthroughTriggered = true;
+            tempState = {
+                ...tempState,
+                isBreakthroughPending: true,
+                eventLog: [{ id: newLog.length, year: tempState.year, text: `Bạn cảm thấy tu vi đã đến điểm đột phá, có thể độ kiếp bất cứ lúc nào!`, isMajor: true }, ...tempState.eventLog]
+            };
+        }
+    }
+    
+    setGameState(tempState);
+
+    // 3. If questing/exploring, stop here
+    if (isQuestOrRealmActive) {
+        return;
+    }
+
+    // 4. Check for special events
+    if (breakthroughTriggered || tempState.isBreakthroughPending) {
+        setGameState(prev => ({...prev, currentEvent: createBreakthroughEvent()}));
         return;
     }
     
-    const nextYear = gameState.year + 0.5;
+    const nextYear = tempState.year;
     const isTournamentYear = (nextYear > 16) && (Math.abs((nextYear - 16) % TOURNAMENT_INTERVAL) < 0.01);
-    
     if (isTournamentYear) {
         setGameState(prev => ({...prev, currentEvent: createTournamentInvitationEvent()}));
         return;
     }
+    
+    const isAuctionYear = (nextYear > 16) && (Math.abs((nextYear - 16) % AUCTION_INTERVAL) < 0.01);
+    if (isAuctionYear && !tempState.tournament) {
+        setGameState(prev => ({...prev, currentEvent: createAuctionInvitationEvent()}));
+        return;
+    }
 
+    // 5. Generate normal event
     setGameState(prev => ({ ...prev, isLoading: true, error: null }));
     try {
-        const event = await geminiService.getYearlyEventChoice(gameState.player, gameState.npcs, gameState.nsfwAllowed);
+        const event = await geminiService.getYearlyEventChoice(tempState.player, tempState.npcs, tempState.nsfwAllowed);
         setGameState(prev => ({ ...prev, isLoading: false, currentEvent: event }));
     } catch (e) {
         const error = e instanceof Error ? e.message : "Đã xảy ra lỗi không xác định khi tạo sự kiện.";
@@ -295,70 +415,149 @@ function App() {
     }
   }, [gameState, geminiService]);
   
-  const checkPlayerState = (player: Player, logBuffer: EventLogEntry[], idOffset: number): {player: Player, log: EventLogEntry[], isGameOver: boolean} => {
+    const handleBreakthroughAttempt = () => {
+        setGameState(prev => {
+            if (!prev.player) return prev;
+            let p = JSON.parse(JSON.stringify(prev.player));
+            let newLogEntries: EventLogEntry[] = [];
+            
+            const currentRealmIndex = REALMS.findIndex(r => r.name === p.realm);
+            const currentRealm = REALMS[currentRealmIndex];
+            const nextRealm = REALMS[currentRealmIndex + 1];
+
+            if (!nextRealm) { 
+                return { ...prev, isBreakthroughPending: false, currentEvent: null };
+            }
+
+            const difficultyMods = { 'đơn giản': 15, 'trung bình': 0, 'khó': -15, 'ác mộng': -30 };
+            const successChance = 70 + difficultyMods[prev.difficulty];
+            const roll = Math.random() * 100;
+
+            if (roll < successChance) {
+                // SUCCESS
+                const oldRealmName = p.realm;
+                p.realm = nextRealm.name;
+                p.cultivationForNextRealm = REALMS[currentRealmIndex + 2]?.minCultivation ?? p.cultivation;
+                p.maxHealth += 50; p.stats.attack += 10; p.stats.defense += 10;
+                p.health = p.maxHealth;
+                newLogEntries.push({ id: prev.eventLog.length, year: p.age, text: `**ĐỘT PHÁ THÀNH CÔNG!** Lôi kiếp tan biến, bạn đã từ ${oldRealmName} tiến lên cảnh giới **${p.realm}**!`, isMajor: true });
+
+                // Promotion logic
+                const newRealmIndex = REALMS.findIndex(r => r.name === p.realm);
+                const currentRankIndex = SECT_RANKS.findIndex(r => r.name === p.sectRank);
+                const eligibleRank = [...SECT_RANKS].reverse().find(rank => {
+                    const requiredRealmIndex = REALMS.findIndex(r => r.name === rank.realmRequired);
+                    return newRealmIndex >= requiredRealmIndex;
+                });
+
+                if (eligibleRank) {
+                    const eligibleRankIndex = SECT_RANKS.findIndex(r => r.name === eligibleRank.name);
+                    if (eligibleRankIndex > currentRankIndex) {
+                        p.sectRank = eligibleRank.name;
+                        newLogEntries.push({ id: prev.eventLog.length + 150, year: p.age, text: `**THĂNG CHỨC!** Do tu vi đột phá, bạn đã được thăng lên chức vụ **${p.sectRank}** trong tông môn!`, isMajor: true });
+                        if (eligibleRank.name === 'Trưởng Lão') {
+                            const sectTechnique = TECHNIQUES.find(t => t.name === 'Nguyên Khí Chân Quyết');
+                            if (sectTechnique) {
+                                p.cultivationTechnique = sectTechnique;
+                                newLogEntries.push({ id: prev.eventLog.length + 160, year: p.age, text: `Do được thăng chức, bạn được tông môn ban thưởng công pháp: <strong>${sectTechnique.name}</strong>!`, isMajor: true });
+                            }
+                        }
+                    }
+                }
+            } else {
+                // FAILURE
+                const cultivationLoss = (nextRealm.minCultivation - currentRealm.minCultivation) * 0.2;
+                const healthLoss = p.maxHealth * 0.5;
+                p.cultivation -= Math.round(cultivationLoss);
+                p.health -= Math.round(healthLoss);
+                newLogEntries.push({ id: prev.eventLog.length + 1, year: p.age, text: `**ĐỘT PHÁ THẤT BẠI!** Bạn không chống nổi lôi kiếp, tu vi bị thụt lùi, kinh mạch trọng thương.`, isMajor: true });
+            }
+            
+            const { player: updatedPlayer, isGameOver } = sanitizeAndCheckPlayerState(p, newLogEntries, prev.eventLog.length + 500);
+            
+            const newLog = [...newLogEntries.reverse(), ...prev.eventLog];
+
+            return {
+                ...prev,
+                player: updatedPlayer,
+                eventLog: newLog,
+                isGameOver,
+                currentEvent: null,
+                isBreakthroughPending: false,
+            };
+        });
+    };
+
+  const sanitizeAndCheckPlayerState = (player: Player, logBuffer: EventLogEntry[], idOffset: number): {player: Player, isGameOver: boolean} => {
     let p = {...player};
     let isGameOver = false;
 
-    // 1. Check for death by age
+    // Sanitize values to prevent NaN-related crashes
+    if (!p.stats) p.stats = { attack: 5, defense: 5 };
+    p.health = isNaN(p.health) ? 1 : p.health;
+    p.maxHealth = isNaN(p.maxHealth) ? 100 : p.maxHealth;
+    p.cultivation = isNaN(p.cultivation) ? 0 : p.cultivation;
+    p.linhThach = isNaN(p.linhThach) ? 0 : p.linhThach;
+    p.stats.attack = isNaN(p.stats.attack) ? 5 : p.stats.attack;
+    p.stats.defense = isNaN(p.stats.defense) ? 5 : p.stats.defense;
+
+    // Clamp health
+    p.health = Math.min(p.maxHealth, p.health);
+
     const currentRealmDetails = REALMS.find(r => r.name === p.realm);
     if (currentRealmDetails && p.age > currentRealmDetails.maxAge) {
         isGameOver = true;
         logBuffer.push({ id: idOffset, year: p.age, text: `**THỌ NGUYÊN ĐÃ CẠN!** Dù tu vi cao thâm, bạn vẫn không thể chống lại quy luật của thời gian. Thọ nguyên đã hết, thân tử đạo tiêu.`, isMajor: true });
     }
     
-    // 2. Check for realm breakthrough
-    const currentRealmIndex = REALMS.findIndex(r => r.name === p.realm);
-    if (!isGameOver && currentRealmIndex !== -1 && currentRealmIndex < REALMS.length - 1) {
-        const nextRealm = REALMS[currentRealmIndex + 1];
-        if (p.cultivation >= nextRealm.minCultivation) {
-            p.realm = nextRealm.name;
-            p.cultivationForNextRealm = REALMS[currentRealmIndex + 2]?.minCultivation ?? p.cultivation;
-            p.maxHealth += 50; p.stats.attack += 10; p.stats.defense += 10;
-            logBuffer.push({ id: idOffset + 100, year: p.age, text: `**ĐỘT PHÁ!** Bạn đã tiến lên cảnh giới **${p.realm}**! Sức mạnh tăng vọt, thọ nguyên kéo dài!`, isMajor: true });
-        
-            // Check for promotion
-            const newRealmIndex = REALMS.findIndex(r => r.name === p.realm);
-            const currentRankIndex = SECT_RANKS.findIndex(r => r.name === p.sectRank);
-
-            const eligibleRank = [...SECT_RANKS].reverse().find(rank => {
-                const requiredRealmIndex = REALMS.findIndex(r => r.name === rank.realmRequired);
-                return newRealmIndex >= requiredRealmIndex;
-            });
-
-            if (eligibleRank) {
-                const eligibleRankIndex = SECT_RANKS.findIndex(r => r.name === eligibleRank.name);
-                if (eligibleRankIndex > currentRankIndex) {
-                    p.sectRank = eligibleRank.name;
-                    logBuffer.push({ id: idOffset + 150, year: p.age, text: `**THĂNG CHỨC!** Do tu vi đột phá, bạn đã được thăng lên chức vụ **${p.sectRank}** trong tông môn!`, isMajor: true });
-
-                    if (eligibleRank.name === 'Trưởng Lão') {
-                        const sectTechnique = TECHNIQUES.find(t => t.name === 'Nguyên Khí Chân Quyết');
-                        if (sectTechnique) {
-                            p.cultivationTechnique = sectTechnique;
-                            logBuffer.push({ id: idOffset + 160, year: p.age, text: `Do được thăng chức, bạn được tông môn ban thưởng công pháp: <strong>${sectTechnique.name}</strong>!`, isMajor: true });
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    // 3. Heal player
-    p.health = Math.min(p.maxHealth, p.health);
-
-    // 4. Check for death by health (e.g. from event)
     if(p.health <= 0 && !isGameOver) {
         isGameOver = true;
-        logBuffer.push({ id: idOffset + 200, year: p.age, text: `**TẨU HỎA NHẬP MA!** Sinh mệnh của bạn đã cạn kiệt. Hành trình tu tiên đã kết thúc.`, isMajor: true });
+        logBuffer.push({ id: idOffset + 200, year: p.age, text: `**TỬ VONG!** Sinh mệnh của bạn đã cạn kiệt. Hành trình tu tiên đã kết thúc.`, isMajor: true });
     }
     
-    return { player: p, log: logBuffer, isGameOver };
+    return { player: p, isGameOver };
   }
   
   const handleChoiceSelection = useCallback((choice: EventChoice) => {
     if (!gameState.player || !gameState.currentEvent) return;
     
-    // --- Tournament Logic ---
+    if (choice.effects.breakthroughAttempt) {
+        handleBreakthroughAttempt();
+        return;
+    }
+    
+    if (choice.effects.auctionAction) {
+        const action = choice.effects.auctionAction;
+        setGameState(prev => {
+            if (!prev.player) return prev;
+            let player = { ...prev.player };
+            let newLog: EventLogEntry[] = [...prev.eventLog];
+            let auction: Auction | null = null;
+            const currentYear = prev.year + 0.5;
+            
+            if (action === 'decline') {
+                newLog.unshift({ id: newLog.length, year: currentYear, text: "Bạn đã từ chối tham gia Đấu Giá Hội.", isMajor: false });
+                return { ...prev, player: {...player, age: currentYear}, year: currentYear, eventLog: newLog, currentEvent: null, auction: null };
+            }
+            
+            if (action === 'join') {
+                newLog.unshift({ id: newLog.length, year: currentYear, text: `Bạn di chuyển đến <strong>Giao Lưu Phường</strong> để tham gia Đấu Giá Hội.`, isMajor: true });
+                player.currentLocation = 'Giao Lưu Phường';
+                
+                const auctionItems = generateAuctionItems(player.realm);
+                auction = {
+                    year: currentYear,
+                    isActive: true,
+                    items: auctionItems,
+                    currentItemIndex: 0,
+                    log: ["Đấu giá hội bắt đầu! Vật phẩm đầu tiên được đưa lên!"]
+                };
+            }
+            return { ...prev, player: {...player, age: currentYear}, year: currentYear, eventLog: newLog, currentEvent: null, auction };
+        });
+        return;
+    }
+
     if (choice.effects.tournamentAction) {
         const action = choice.effects.tournamentAction;
         setGameState(prev => {
@@ -383,8 +582,12 @@ function App() {
                 newLog.unshift({ id: newLog.length, year: currentYear, text: `Bạn đã chi ${TOURNAMENT_FEE} linh thạch để ghi danh vào **Đại Hội Thiên Kiêu**.`, isMajor: true });
 
                 const opponents = generateTournamentOpponents(player, prev.difficulty);
-                // 8 participants: 1 player + 7 opponents
+                // 8 participants: 1 player + 7 opponents. Always a power of 2.
                 const allParticipants: (Player|Opponent)[] = [player, ...opponents.slice(0,7)]; 
+                if (allParticipants.length % 2 !== 0) {
+                     newLog.unshift({ id: newLog.length, year: currentYear, text: `Lỗi giải đấu: Số lượng người tham gia không hợp lệ.`, isMajor: true });
+                     return { ...prev, player: {...player, age: currentYear}, year: currentYear, eventLog: newLog, currentEvent: null };
+                }
                 const shuffled = allParticipants.sort(() => 0.5 - Math.random());
                 const round1: Match[] = [];
                 for(let i=0; i < shuffled.length; i+=2) {
@@ -396,7 +599,7 @@ function App() {
                 if (playerMatch) {
                    newEvent = createMatchEvent(playerMatch);
                 } else {
-                   // This case shouldn't happen, but as a fallback, cancel tournament
+                   // This case should ideally not be reached with the current logic.
                    newLog.unshift({ id: newLog.length, year: currentYear, text: `Lỗi khi tạo giải đấu.`, isMajor: true });
                    tournament = null;
                    newEvent = null;
@@ -406,21 +609,20 @@ function App() {
             
             if (action === 'fight' && tournament) {
                 const currentRoundMatches = tournament.bracket[tournament.currentRound - 1];
-                if (!currentRoundMatches) { // Safeguard
+                if (!currentRoundMatches) { 
                     console.error("Tournament Error: Cannot find matches for current round.");
                     return { ...prev, tournament: null, currentEvent: null };
                 }
 
                 const playerMatch = currentRoundMatches.find(m => !m.winner && ((m.player1 as Player).name === player.name || (m.player2 as Player).name === player.name));
                 
-                if (!playerMatch) { // Safeguard
+                if (!playerMatch) {
                     console.error("Tournament Error: Cannot find player's match.");
                     return { ...prev, tournament: null, currentEvent: null };
                 }
                 
                 const opponent = (playerMatch.player1 as Player).name === player.name ? playerMatch.player2 as Opponent : playerMatch.player1 as Opponent;
 
-                // Simple fight logic
                 const playerDamage = Math.max(1, player.stats.attack - opponent.stats.defense) * (Math.random() * 0.4 + 0.8);
                 const opponentDamage = Math.max(1, opponent.stats.attack - player.stats.defense) * (Math.random() * 0.4 + 0.8);
                 const playerWon = playerDamage >= opponentDamage;
@@ -429,7 +631,7 @@ function App() {
 
                 if (playerWon) {
                     playerMatch.winner = (playerMatch.player1 as Player).name === player.name ? 'player1' : 'player2';
-                    const roundRewards = [{lt: 500, cv: 250}, {lt: 1250, cv: 600}, {lt: 7500, cv: 4000}]; // Quarter, Semi, Final (Rewards halved)
+                    const roundRewards = [{lt: 500, cv: 250}, {lt: 1250, cv: 600}, {lt: 7500, cv: 4000}];
                     const reward = roundRewards[tournament.currentRound - 1];
                     player.linhThach += Math.round(reward.lt * player.linhThachGainModifier);
                     player.cultivation += Math.round(reward.cv * player.cultivationGainModifier);
@@ -447,13 +649,12 @@ function App() {
                          const newRanking = [newRankEntry, ...prev.geniusRanking];
                          return { ...prev, player, year: currentYear, eventLog: newLog, currentEvent: null, tournament: null, geniusRanking: newRanking }
                     } else {
-                         // Simulate other matches in the current round
                          currentRoundMatches.filter(m => m !== playerMatch).forEach(m => m.winner = Math.random() > 0.5 ? 'player1' : 'player2');
                          
                          const winners = currentRoundMatches.map(m => m.winner === 'player1' ? m.player1 : m.player2);
                          const nextRound: Match[] = [];
                          for(let i=0; i < winners.length; i+=2) {
-                            if(winners[i+1]) {
+                            if(winners[i+1]) { // This correctly handles byes by not creating a match for a lone winner
                                 nextRound.push({player1: winners[i], player2: winners[i+1], winner: null});
                             }
                          }
@@ -461,12 +662,12 @@ function App() {
                          tournament.currentRound++;
                          const nextPlayerMatch = nextRound.find(m => (m.player1 as Player).name === player.name || (m.player2 as Player).name === player.name);
                          newEvent = nextPlayerMatch ? createMatchEvent(nextPlayerMatch) : null;
-                         if (!newEvent) { // Safeguard in case player is somehow not in next round
-                             newLog.unshift({ id: newLog.length, year: currentYear, text: `Giải đấu đã kết thúc một cách bí ẩn.`, isMajor: true });
+                         if (!newEvent) {
+                             newLog.unshift({ id: newLog.length, year: currentYear, text: `Bạn không có đối thủ ở vòng tiếp theo, giải đấu đã kết thúc.`, isMajor: true });
                              tournament = null;
                          }
                     }
-                } else { // Player lost
+                } else {
                     newLog.unshift({ id: newLog.length, year: currentYear, text: `Hành trình của bạn tại Đại Hội Thiên Kiêu đã kết thúc.`, isMajor: true });
                     tournament = null;
                 }
@@ -488,12 +689,9 @@ function App() {
         let activeSecretRealm = prev.activeSecretRealm;
         let newLogEntries: EventLogEntry[] = [];
 
-        // Apply passive regen first
         p.health = Math.min(p.maxHealth, Math.round(p.health + p.maxHealth * 0.1));
-
         p.age += 0.5;
 
-        // Salary check (annually)
         if (p.age % 1 === 0) {
             const currentRankDetails = SECT_RANKS.find(r => r.name === p.sectRank);
             if (currentRankDetails && currentRankDetails.salary > 0) {
@@ -503,8 +701,6 @@ function App() {
             }
         }
         
-        // --- CULTIVATION GAIN ---
-        // Base passive gain
         const allTalents = Object.values(TALENTS).flat();
         const talentBonusPerYear = p.talents.reduce((acc, talentId) => {
             const talentInfo = allTalents.find(t => t.id === talentId);
@@ -516,113 +712,130 @@ function App() {
         const totalPassiveGain = ((basePassiveGain + techniqueBonus + talentBonusPerYear + petBonus) / 2) * p.cultivationGainModifier;
         p.cultivation += totalPassiveGain;
 
-        // Event gain (halved)
-        const eventCultivation = choice.effects.cultivationGained ?? 0;
-        p.cultivation += Math.round(((eventCultivation * multiplier) / 2) * p.cultivationGainModifier);
 
-        const eventLinhThach = choice.effects.linhThachChange ?? 0;
-        p.linhThach = Math.max(0, p.linhThach + Math.round(eventLinhThach * multiplier * p.linhThachGainModifier));
+        const { successChance, effects } = choice;
+        let isSuccessful = true;
+        let outcomeText = '';
 
-        p.health = Math.max(0, Math.min(p.maxHealth, p.health + (choice.effects.healthChange ?? 0)));
-        
-        let eventText = `${originalEventDescription}<br>→ <i>${choice.text}</i>`;
-        
-        if (choice.effects.newItem) {
-            const newItemData = choice.effects.newItem as any;
-            const newItem: Item = {
-                id: `${Date.now()}-${newItemData.name}`,
-                name: newItemData.name,
-                type: newItemData.type,
-                description: newItemData.description,
-                effects: newItemData.effects || {},
-                technique: newItemData.technique,
-            };
-            if(newItem.effects.cultivation) { // Halve cultivation from items
-                newItem.effects.cultivation = Math.round(newItem.effects.cultivation / 2);
+        if (successChance !== undefined && successChance !== null) {
+            const roll = Math.random() * 100;
+            if (roll > successChance) {
+                isSuccessful = false;
             }
-            p.inventory = [...p.inventory, newItem];
-            eventText += ` (Nhận được <strong>${newItem.name}</strong>).`;
-        }
-        
-        if (choice.effects.newPet) {
-            const petData = choice.effects.newPet;
-            const newPet: Pet = {
-                id: `${Date.now()}-${petData.name}`,
-                ...petData,
-            };
-            if (newPet.effects.cultivationBonusPerYear) { // Halve cultivation from pets
-                newPet.effects.cultivationBonusPerYear = Math.round(newPet.effects.cultivationBonusPerYear / 2);
-            }
-            p.pets = [...p.pets, newPet];
-            newLogEntries.push({ id: prev.eventLog.length + 4, year: p.age, text: `Bạn đã nhận được sủng vật mới: <strong>${newPet.name} (${newPet.species})</strong>!`, isMajor: true });
-        }
-        
-        if (choice.effects.startSecretRealm && !p.activeQuest && !activeSecretRealm) {
-            const realmData = choice.effects.startSecretRealm;
-            activeSecretRealm = {
-                id: `${Date.now()}-${realmData.name}`,
-                ...realmData,
-                progress: 0,
-            };
-            newLogEntries.push({ id: prev.eventLog.length + 3, year: p.age, text: `**CƠ DUYÊN LỚN:** Bạn đã bắt đầu hành trình thám hiểm Bí Cảnh: <strong>${activeSecretRealm.name}</strong>!`, isMajor: true });
+            outcomeText = isSuccessful
+                ? ` <span class="text-green-400">(Thành công!)</span>`
+                : ` <span class="text-red-400">(Thất bại!)</span>`;
         }
 
-        if (choice.effects.newQuest && !p.activeQuest && !activeSecretRealm) {
-            const quest = choice.effects.newQuest;
-            if (quest.reward.cultivation) { // Halve cultivation from quests
-                quest.reward.cultivation = Math.round(quest.reward.cultivation / 2);
-            }
-            p.activeQuest = { ...quest, progress: 0 };
-            newLogEntries.push({ id: prev.eventLog.length + 300, year: p.age, text: `**Nhiệm vụ mới:** Bạn đã nhận nhiệm vụ "${quest.title}".`, isMajor: true });
-        }
-        
-        if (choice.effects.relationshipChange) {
-            const { npcId, points } = choice.effects.relationshipChange;
-            const npcIndex = npcs.findIndex(n => n.id === npcId);
-            if (npcIndex !== -1) {
-                const npc = npcs[npcIndex];
-                npc.relationshipPoints += points;
-                if (!npc.isLover) {
-                    npc.status = getRelationshipStatus(npc.relationshipPoints);
+        let eventText = `${originalEventDescription}<br>→ <i>${choice.text}</i>${outcomeText}`;
+
+        if (isSuccessful) {
+            const eventCultivation = effects.cultivationGained ?? 0;
+            p.cultivation += Math.round(((eventCultivation * multiplier) / 2) * p.cultivationGainModifier);
+
+            const eventLinhThach = effects.linhThachChange ?? 0;
+            p.linhThach = Math.max(0, p.linhThach + Math.round(eventLinhThach * multiplier * p.linhThachGainModifier));
+
+            p.health = Math.max(0, Math.min(p.maxHealth, p.health + (effects.healthChange ?? 0)));
+            
+            if (effects.newItem) {
+                const newItemData = effects.newItem as any;
+                const newItem: Item = {
+                    id: `${Date.now()}-${newItemData.name}`,
+                    name: newItemData.name,
+                    type: newItemData.type,
+                    description: newItemData.description,
+                    effects: newItemData.effects || {},
+                    technique: newItemData.technique,
+                };
+                if(newItem.effects.cultivation) {
+                    newItem.effects.cultivation = Math.round(newItem.effects.cultivation / 2);
                 }
-                const logText = points > 0 
-                    ? `Mối quan hệ của bạn với <strong>${npc.name}</strong> đã trở nên tốt hơn.`
-                    : `Mối quan hệ của bạn với <strong>${npc.name}</strong> đã xấu đi.`;
-                newLogEntries.push({ id: prev.eventLog.length + 1, year: p.age, text: logText, isMajor: false });
+                p.inventory = [...p.inventory, newItem];
+                eventText += ` (Nhận được <strong>${newItem.name}</strong>).`;
             }
-        }
+            
+            if (effects.newPet) {
+                const petData = effects.newPet;
+                const newPet: Pet = {
+                    id: `${Date.now()}-${petData.name}`,
+                    ...petData,
+                };
+                if (newPet.effects.cultivationBonusPerYear) {
+                    newPet.effects.cultivationBonusPerYear = Math.round(newPet.effects.cultivationBonusPerYear / 2);
+                }
+                p.pets = [...p.pets, newPet];
+                newLogEntries.push({ id: prev.eventLog.length + 4, year: p.age, text: `Bạn đã nhận được sủng vật mới: <strong>${newPet.name} (${newPet.species})</strong>!`, isMajor: true });
+            }
+            
+            if (effects.startSecretRealm && !p.activeQuest && !activeSecretRealm) {
+                const realmData = effects.startSecretRealm;
+                activeSecretRealm = {
+                    id: `${Date.now()}-${realmData.name}`,
+                    ...realmData,
+                    progress: 0,
+                };
+                newLogEntries.push({ id: prev.eventLog.length + 3, year: p.age, text: `**CƠ DUYÊN LỚN:** Bạn đã bắt đầu hành trình thám hiểm Bí Cảnh: <strong>${activeSecretRealm.name}</strong>!`, isMajor: true });
+            }
 
-        if (choice.effects.newSpouse) {
-            const { npcId } = choice.effects.newSpouse;
-             const npcIndex = npcs.findIndex(n => n.id === npcId);
-             if (npcIndex !== -1 && !p.spouseId) {
-                 p.spouseId = npcId;
-                 npcs[npcIndex].isLover = true;
-                 npcs[npcIndex].status = 'Bạn đời';
-                 newLogEntries.push({ id: prev.eventLog.length + 2, year: p.age, text: `Bạn và <strong>${npcs[npcIndex].name}</strong> đã chính thức trở thành đạo lữ, cùng nhau bước trên con đường tu tiên!`, isMajor: true });
-             }
-        }
-        
-        if (choice.effects.dualCultivation) {
-            const currentRealmIndex = REALMS.findIndex(r => r.name === p.realm);
-            const currentRealm = REALMS[currentRealmIndex];
-            const nextRealm = REALMS[currentRealmIndex + 1];
+            if (effects.newQuest && !p.activeQuest && !activeSecretRealm) {
+                const quest = effects.newQuest;
+                if (quest.reward.cultivation) {
+                    quest.reward.cultivation = Math.round(quest.reward.cultivation / 2);
+                }
+                p.activeQuest = { ...quest, progress: 0 };
+                newLogEntries.push({ id: prev.eventLog.length + 300, year: p.age, text: `**Nhiệm vụ mới:** Bạn đã nhận nhiệm vụ "${quest.title}".`, isMajor: true });
+            }
             
-            const cultivationNeeded = (nextRealm?.minCultivation ?? (currentRealm.minCultivation * 5)) - currentRealm.minCultivation;
-            // Reward is 10% of the cultivation needed for next realm + a base amount
-            const dualCultivationBonus = Math.round((cultivationNeeded * 0.1 + 100) / 2 * p.cultivationGainModifier);
+            if (effects.relationshipChange) {
+                const { npcId, points } = effects.relationshipChange;
+                const npcIndex = npcs.findIndex(n => n.id === npcId);
+                if (npcIndex !== -1) {
+                    const npc = npcs[npcIndex];
+                    npc.relationshipPoints += (points * 2);
+                    npc.status = getRelationshipStatus(npc.relationshipPoints);
+                    const logText = points > 0 
+                        ? `Mối quan hệ của bạn với <strong>${npc.name}</strong> đã trở nên tốt hơn.`
+                        : `Mối quan hệ của bạn với <strong>${npc.name}</strong> đã xấu đi.`;
+                    newLogEntries.push({ id: prev.eventLog.length + 1, year: p.age, text: logText, isMajor: false });
+                }
+            }
+
+            if (effects.newSpouse) {
+                const { npcId } = effects.newSpouse;
+                const npcIndex = npcs.findIndex(n => n.id === npcId);
+                if (npcIndex !== -1 && !p.spouseId) {
+                    p.spouseId = npcId;
+                    npcs[npcIndex].isLover = true;
+                    npcs[npcIndex].status = 'Bạn đời';
+                    newLogEntries.push({ id: prev.eventLog.length + 2, year: p.age, text: `Bạn và <strong>${npcs[npcIndex].name}</strong> đã chính thức trở thành đạo lữ, cùng nhau bước trên con đường tu tiên!`, isMajor: true });
+                }
+            }
             
-            p.cultivation += dualCultivationBonus;
-            eventText += ` Cùng đạo lữ song tu, bạn nhận được ${dualCultivationBonus} tu vi, cảm giác như sắp đột phá!`;
+            if (effects.dualCultivation) {
+                const currentRealmIndex = REALMS.findIndex(r => r.name === p.realm);
+                const currentRealm = REALMS[currentRealmIndex];
+                const nextRealm = REALMS[currentRealmIndex + 1];
+                
+                const cultivationNeeded = (nextRealm?.minCultivation ?? (currentRealm.minCultivation * 5)) - currentRealm.minCultivation;
+                const dualCultivationBonus = Math.round((cultivationNeeded * 0.1 + 100) / 2 * p.cultivationGainModifier);
+                
+                p.cultivation += dualCultivationBonus;
+                eventText += ` Cùng đạo lữ song tu, bạn nhận được ${dualCultivationBonus} tu vi, cảm giác như sắp đột phá!`;
+            }
+        } else {
+            const healthPenalty = 5 + Math.floor(Math.random() * 10);
+            p.health = Math.max(0, p.health - healthPenalty);
+            newLogEntries.push({ id: prev.eventLog.length + 10, year: p.age, text: `Vận rủi đeo bám, bạn mất ${healthPenalty} HP.`, isMajor: false });
         }
 
         newLogEntries.push({ id: prev.eventLog.length, year: p.age, text: eventText, isMajor: false });
 
         const updatedNpcs = progressNpcs(npcs);
 
-        const { player: updatedPlayer, log: postEventLog, isGameOver } = checkPlayerState(p, newLogEntries, prev.eventLog.length + 500);
+        const { player: updatedPlayer, isGameOver } = sanitizeAndCheckPlayerState(p, newLogEntries, prev.eventLog.length + 500);
         
-        const newLog = [...postEventLog.reverse(), ...prev.eventLog];
+        const newLog = [...newLogEntries.reverse(), ...prev.eventLog];
 
         return { ...prev, player: updatedPlayer, npcs: updatedNpcs, year: updatedPlayer.age, eventLog: newLog, currentEvent: null, isGameOver, hasTraveledThisYear: false, activeSecretRealm };
     });
@@ -630,83 +843,54 @@ function App() {
   
   const handleTravel = useCallback((locationName: string) => {
     setMapOpen(false);
-    if (!gameState.player || gameState.player.currentLocation === locationName || gameState.activeSecretRealm) return;
+    if (!gameState.player || gameState.player.currentLocation === locationName || gameState.activeSecretRealm || gameState.auction?.isActive) return;
     setGameState(prev => {
       if (!prev.player) return prev;
       const player = { ...prev.player, currentLocation: locationName };
       const newLogEntry: EventLogEntry = { id: prev.eventLog.length, year: prev.year, text: `Bạn đã di chuyển đến <strong>${locationName}</strong>.`, isMajor: false, };
       return { ...prev, player, eventLog: [newLogEntry, ...prev.eventLog], hasTraveledThisYear: true, };
     });
-  }, [gameState.player, gameState.activeSecretRealm]);
+  }, [gameState.player, gameState.activeSecretRealm, gameState.auction]);
 
   const handleSaveGame = () => {
     if (!gameState.player) {
       alert("Không có dữ liệu game để lưu!");
       return;
     }
-    const dataStr = JSON.stringify(gameState, null, 2);
-    localStorage.setItem(SAVE_KEY, dataStr);
-    setLocalSaveExists(true);
-    alert("Đã lưu game vào trình duyệt!");
-
-    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-    const exportFileDefaultName = 'tu_tien_save.json';
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.click();
+    
+    try {
+        const dataStr = JSON.stringify(gameState, null, 2);
+        localStorage.setItem(SAVE_KEY, dataStr);
+        setLocalSaveExists(true);
+        alert("Đã lưu game vào trình duyệt!");
+        
+        const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+        const exportFileDefaultName = 'tu_tien_save.json';
+        const linkElement = document.createElement('a');
+        linkElement.setAttribute('href', dataUri);
+        linkElement.setAttribute('download', exportFileDefaultName);
+        linkElement.click();
+    } catch(e) {
+        alert("Lưu game thất bại! Trình duyệt của bạn có thể đang chặn lưu trữ cục bộ.");
+        console.error("Failed to save game:", e);
+    }
   };
   
   const loadGameFromState = (loadedState: GameState) => {
     if(loadedState.player) {
-        // --- MIGRATION LOGIC ---
-        // Migration: Old string talent to new string[] talents
-        if ((loadedState.player as any).talent && !loadedState.player.talents) {
-            const oldTalentName = (loadedState.player as any).talent;
-            const allTalents = Object.values(TALENTS).flat();
-            const foundTalent = allTalents.find(t => t.name === oldTalentName);
-            loadedState.player.talents = foundTalent ? [foundTalent.id] : [];
-             delete (loadedState.player as any).talent;
-             delete (loadedState.player as any).talentCultivationBonus;
-        }
-
-        // Migration: Old year-based quest/realm progress to turn-based progress
-        if (loadedState.player.activeQuest) {
-            // A simple heuristic to check if it's an old save file
-            // Old durations were very small (e.g., 1-5 years). New turn durations will be similar.
-            // This is tricky. A better way is to check if progress is a float.
-            // Let's assume old saves might have non-integer progress values.
-             if (loadedState.player.activeQuest.progress % 1 !== 0) {
-                loadedState.player.activeQuest.duration *= 2;
-                loadedState.player.activeQuest.progress *= 2;
-             }
-        }
-        if (loadedState.activeSecretRealm) {
-             if (loadedState.activeSecretRealm.progress % 1 !== 0) {
-                loadedState.activeSecretRealm.duration *= 2;
-                loadedState.activeSecretRealm.progress *= 2;
-             }
-        }
-        // --- END MIGRATION ---
-
-        if(loadedState.player.gender === undefined) loadedState.player.gender = 'Nam';
-        if(loadedState.player.activeQuest === undefined) loadedState.player.activeQuest = null;
-        if(loadedState.difficulty === undefined) loadedState.difficulty = 'trung bình';
+        // --- MIGRATION LOGIC & ROBUSTNESS ---
+        if (!loadedState.player.stats) { loadedState.player.stats = { attack: 5, defense: 5 }; }
+        if (!loadedState.player.equipment) { loadedState.player.equipment = { weapon: null, armor: null, accessory: null }; }
+        if (loadedState.player.gender === undefined) loadedState.player.gender = 'Nam';
+        if (loadedState.player.activeQuest === undefined) loadedState.player.activeQuest = null;
+        if (loadedState.difficulty === undefined) loadedState.difficulty = 'trung bình';
         if (loadedState.player.avatarUrl === undefined) loadedState.player.avatarUrl = '';
         if (loadedState.tournament === undefined) loadedState.tournament = null;
         if (loadedState.geniusRanking === undefined) loadedState.geniusRanking = [];
-        if (loadedState.npcs === undefined) {
-            loadedState.npcs = JSON.parse(JSON.stringify(INITIAL_NPCS));
-        }
-        if (loadedState.player.spouseId === undefined) {
-            loadedState.player.spouseId = null;
-        }
-        if (loadedState.player.sect === undefined) {
-            loadedState.player.sect = "Tán Tu";
-        }
-        if (loadedState.nsfwAllowed === undefined) {
-            loadedState.nsfwAllowed = false;
-        }
+        if (loadedState.npcs === undefined) loadedState.npcs = JSON.parse(JSON.stringify(INITIAL_NPCS));
+        if (loadedState.player.spouseId === undefined) loadedState.player.spouseId = null;
+        if (loadedState.player.sect === undefined) loadedState.player.sect = "Tán Tu";
+        if (loadedState.nsfwAllowed === undefined) loadedState.nsfwAllowed = false;
          if (loadedState.player.sectRank === undefined) {
             const currentRealmIndex = REALMS.findIndex(r => r.name === loadedState.player!.realm);
             const eligibleRank = [...SECT_RANKS].reverse().find(rank => {
@@ -715,47 +899,40 @@ function App() {
             });
             loadedState.player.sectRank = eligibleRank ? eligibleRank.name : SECT_RANKS[0].name;
         }
-        if (loadedState.player.pets === undefined) {
-            loadedState.player.pets = [];
-        }
-        if (loadedState.activeSecretRealm === undefined) {
-            loadedState.activeSecretRealm = null;
-        }
-        if (loadedState.shopInventory === undefined) {
-            loadedState.shopInventory = [];
-        }
-        if (loadedState.shopLastRefreshed === undefined) {
-            loadedState.shopLastRefreshed = 0;
-        }
-        if (loadedState.player.family === undefined) {
-            loadedState.player.family = 'thương nhân';
-        }
-        if (loadedState.player.linhThachGainModifier === undefined) {
-            loadedState.player.linhThachGainModifier = 1.0;
-        }
-        if (loadedState.player.cultivationGainModifier === undefined) {
-            loadedState.player.cultivationGainModifier = 1.0;
-        }
-        if (loadedState.player.talents === undefined) {
-            loadedState.player.talents = ['nguỵ'];
-        }
+        if (loadedState.player.pets === undefined) loadedState.player.pets = [];
+        if (loadedState.activeSecretRealm === undefined) loadedState.activeSecretRealm = null;
+        if (loadedState.shopInventory === undefined) loadedState.shopInventory = [];
+        if (loadedState.shopLastRefreshed === undefined) loadedState.shopLastRefreshed = 0;
+        if (loadedState.player.family === undefined) loadedState.player.family = 'thương nhân';
+        if (loadedState.player.linhThachGainModifier === undefined) loadedState.player.linhThachGainModifier = 1.0;
+        if (loadedState.player.cultivationGainModifier === undefined) loadedState.player.cultivationGainModifier = 1.0;
+        if (loadedState.player.talents === undefined) loadedState.player.talents = ['nguỵ'];
+        if (loadedState.isBreakthroughPending === undefined) loadedState.isBreakthroughPending = false;
+        if (loadedState.auction === undefined) loadedState.auction = null;
+        if (loadedState.activeConversation === undefined) loadedState.activeConversation = null;
+
+
+        // Final sanitization pass on load
+        const { player: sanitizedPlayer } = sanitizeAndCheckPlayerState(loadedState.player, [], 0);
+        loadedState.player = sanitizedPlayer;
     }
     setGameState(loadedState);
     setCurrentView('playing');
   }
 
   const handleContinueGame = () => {
-      const savedGame = localStorage.getItem(SAVE_KEY);
-      if(savedGame) {
-          try {
+      try {
+          const savedGame = localStorage.getItem(SAVE_KEY);
+          if(savedGame) {
               let loadedState = JSON.parse(savedGame);
               loadGameFromState(loadedState);
-          } catch(e) {
-              alert("Lỗi khi tải game đã lưu. File có thể bị hỏng.");
-              localStorage.removeItem(SAVE_KEY);
+          } else {
+              alert("Không tìm thấy game đã lưu trong trình duyệt.");
           }
-      } else {
-          alert("Không tìm thấy game đã lưu trong trình duyệt.");
+      } catch(e) {
+          alert("Lỗi khi tải game đã lưu. File có thể bị hỏng hoặc trình duyệt đang chặn truy cập.");
+          localStorage.removeItem(SAVE_KEY);
+          console.error("Failed to load game:", e);
       }
   }
   
@@ -848,7 +1025,7 @@ function App() {
 
   const handleEquipItem = (item: Item) => {
       setGameState(prev => {
-          if (!prev.player || item.type === 'consumable' || item.type === 'techniqueScroll') return prev;
+          if (!prev.player || !['weapon', 'armor', 'accessory'].includes(item.type)) return prev;
           
           let player = JSON.parse(JSON.stringify(prev.player!));
           const itemType = item.type as 'weapon' | 'armor' | 'accessory';
@@ -875,11 +1052,12 @@ function App() {
 
   const handleUnequipItem = (item: Item) => {
       setGameState(prev => {
-          if (!prev.player || item.type === 'consumable' || item.type === 'techniqueScroll') return prev;
+          if (!prev.player || !['weapon', 'armor', 'accessory'].includes(item.type)) return prev;
           let player = JSON.parse(JSON.stringify(prev.player!));
           const itemType = item.type as 'weapon' | 'armor' | 'accessory';
 
-          if (player.equipment[itemType]?.id !== item.id) return prev;
+          if (!player.equipment[itemType] || player.equipment[itemType]?.id !== item.id) return prev;
+
 
           player.equipment[itemType] = null;
           player.inventory.push(item);
@@ -915,10 +1093,10 @@ function App() {
           
           player.inventory.splice(itemIndex, 1);
           
-          const newLogEntry: EventLogEntry = { id: prev.eventLog.length, year: prev.year, text: logText, isMajor: false };
-          const { player: updatedPlayer, log: postEventLog, isGameOver } = checkPlayerState(player, [newLogEntry], prev.eventLog.length + 500);
+          let newLogEntries: EventLogEntry[] = [{ id: prev.eventLog.length, year: prev.year, text: logText, isMajor: false }];
+          const { player: updatedPlayer, isGameOver } = sanitizeAndCheckPlayerState(player, newLogEntries, prev.eventLog.length + 500);
 
-          return { ...prev, player: updatedPlayer, eventLog: [...postEventLog.reverse(), ...prev.eventLog], isGameOver };
+          return { ...prev, player: updatedPlayer, eventLog: [...newLogEntries, ...prev.eventLog], isGameOver };
       });
   };
 
@@ -949,7 +1127,6 @@ function App() {
           if (itemIndex > -1) {
              player.inventory.splice(itemIndex, 1);
           } else {
-            // It might be an equipped item, but we don't allow dropping equipped items
             return prev;
           }
           
@@ -957,11 +1134,144 @@ function App() {
           return { ...prev, player, eventLog: [newLogEntry, ...prev.eventLog] };
       });
   };
+  
+    const handlePlaceBid = useCallback(() => {
+        setGameState(prev => {
+            if (!prev.player || !prev.auction || prev.auction.items[prev.auction.currentItemIndex].status !== 'ongoing') return prev;
+            
+            let auction = JSON.parse(JSON.stringify(prev.auction!));
+            let player = { ...prev.player };
+            const currentAuctionItem = auction.items[auction.currentItemIndex];
+            
+            const playerBid = Math.ceil(currentAuctionItem.currentBid * 1.1);
+            if (player.linhThach < playerBid) {
+                auction.log.push("Bạn không đủ Linh Thạch để ra giá này.");
+                return { ...prev, auction };
+            }
+            
+            currentAuctionItem.currentBid = playerBid;
+            currentAuctionItem.highestBidderId = 'player';
+            currentAuctionItem.highestBidderName = player.name;
+            auction.log.push(`Bạn ra giá ${playerBid} Linh Thạch.`);
+            
+            const npcShouldBid = Math.random() < 0.6;
+            const npcCanAfford = currentAuctionItem.currentBid < (currentAuctionItem.item.cost ?? 50000) * 2;
+            
+            if (npcShouldBid && npcCanAfford) {
+                const npcBid = Math.ceil(currentAuctionItem.currentBid * (1.05 + Math.random() * 0.15));
+                const npcNames = ["Tu sĩ áo đen", "Lão giả bí ẩn", "Thiếu nữ váy trắng", "Đại gia phòng VIP"];
+                const npcName = npcNames[Math.floor(Math.random() * npcNames.length)];
+                
+                currentAuctionItem.currentBid = npcBid;
+                currentAuctionItem.highestBidderId = `npc_${Date.now()}`;
+                currentAuctionItem.highestBidderName = npcName;
+                auction.log.push(`${npcName} ra giá ${npcBid} Linh Thạch!`);
+            }
+            
+            return { ...prev, auction };
+        });
+    }, []);
+
+    const handlePassAuctionItem = useCallback(() => {
+        setGameState(prev => {
+            if (!prev.player || !prev.auction) return prev;
+            
+            let auction = JSON.parse(JSON.stringify(prev.auction!));
+            let player = { ...prev.player };
+            let newLogEntries: EventLogEntry[] = [...prev.eventLog];
+            const currentAuctionItem = auction.items[auction.currentItemIndex];
+            
+            currentAuctionItem.status = currentAuctionItem.highestBidderId ? 'sold' : 'passed';
+            
+            if (currentAuctionItem.status === 'sold') {
+                const message = `<strong>${currentAuctionItem.item.name}</strong> đã được bán cho <strong>${currentAuctionItem.highestBidderName}</strong> với giá ${currentAuctionItem.currentBid} Linh Thạch.`;
+                newLogEntries.unshift({ id: newLogEntries.length, year: prev.year, text: message, isMajor: true });
+
+                if (currentAuctionItem.highestBidderId === 'player') {
+                    player.linhThach -= currentAuctionItem.currentBid;
+                    player.inventory.push(currentAuctionItem.item);
+                }
+            } else {
+                const message = `Không ai trả giá cho <strong>${currentAuctionItem.item.name}</strong>, vật phẩm đã bị lưu trữ.`;
+                newLogEntries.unshift({ id: newLogEntries.length, year: prev.year, text: message, isMajor: false });
+            }
+            
+            auction.currentItemIndex++;
+            if (auction.currentItemIndex >= auction.items.length) {
+                auction.isActive = false;
+                newLogEntries.unshift({ id: newLogEntries.length + 1, year: prev.year, text: "Đấu giá hội đã kết thúc.", isMajor: true });
+            } else {
+                auction.log = ["Vật phẩm tiếp theo đã được đưa lên!"];
+            }
+
+            return { ...prev, player, auction, eventLog: newLogEntries };
+        });
+    }, []);
+
+    const handleUpdateNpcAvatar = (npcId: string, url: string) => {
+        setGameState(prev => {
+            if (!prev.npcs) return prev;
+            const newNpcs = prev.npcs.map(npc => {
+                if (npc.id === npcId) {
+                    return { ...npc, avatarUrl: url };
+                }
+                return npc;
+            });
+            return { ...prev, npcs: newNpcs };
+        });
+    };
+
+    const handleStartConversation = useCallback(async (npcId: string) => {
+        if (!geminiService || !gameState.player) return;
+        
+        const npc = gameState.npcs.find(n => n.id === npcId);
+        if (!npc) return;
+
+        setRelationshipPanelOpen(false);
+        setGameState(prev => ({ ...prev, isLoading: true, error: null }));
+        
+        try {
+            const event = await geminiService.getNpcConversation(gameState.player, npc);
+            setGameState(prev => ({
+                ...prev,
+                isLoading: false,
+                activeConversation: { npcId, event },
+            }));
+        } catch (e) {
+            const error = e instanceof Error ? e.message : "Không thể bắt đầu hội thoại.";
+            setGameState(prev => ({ ...prev, isLoading: false, error }));
+        }
+    }, [geminiService, gameState.player, gameState.npcs]);
+
+    const handleConversationResponse = useCallback((choice: EventChoice) => {
+        setGameState(prev => {
+            if (!prev.player || !prev.activeConversation) return prev;
+
+            let npcs = JSON.parse(JSON.stringify(prev.npcs));
+            let newLogEntries: EventLogEntry[] = [];
+            const npc = npcs.find((n: NPC) => n.id === prev.activeConversation!.npcId);
+
+            if (choice.effects.relationshipChange && npc) {
+                 const { points } = choice.effects.relationshipChange;
+                 npc.relationshipPoints += (points * 2);
+                 npc.status = getRelationshipStatus(npc.relationshipPoints);
+
+                 const logText = `Bạn gửi Truyền Âm Phù cho <strong>${npc.name}</strong>. Mối quan hệ của hai người đã trở nên tốt hơn.`;
+                 newLogEntries.push({ id: prev.eventLog.length + 1, year: prev.year, text: logText, isMajor: false });
+            }
+
+            const newLog = [...newLogEntries.reverse(), ...prev.eventLog];
+            return { ...prev, npcs, eventLog: newLog, activeConversation: null };
+        });
+    }, []);
 
   const renderContent = () => {
-    const { player, tournament, currentEvent, isLoading, error, hasTraveledThisYear, eventLog, isGameOver, gameStarted, geniusRanking, npcs, activeSecretRealm } = gameState;
-    const nextTournamentIn = player ? TOURNAMENT_INTERVAL - (player.age - 16) % TOURNAMENT_INTERVAL : 0;
+    const { player, year, tournament, currentEvent, isLoading, error, hasTraveledThisYear, eventLog, isGameOver, gameStarted, geniusRanking, npcs, activeSecretRealm, auction, shopLastRefreshed } = gameState;
     
+    const nextTournamentIn = player ? calculateIntervalCountdown(player.age, TOURNAMENT_INTERVAL, 16) : TOURNAMENT_INTERVAL;
+    const nextAuctionIn = player ? calculateIntervalCountdown(player.age, AUCTION_INTERVAL, 16) : AUCTION_INTERVAL;
+    const nextShopRefreshIn = player ? Math.max(0, (shopLastRefreshed + SHOP_REFRESH_INTERVAL) - year) : 0;
+
     switch (currentView) {
       case 'character-creation':
         return <CharacterCreationPanel onStartGame={handleStartGame} onBack={() => setCurrentView('main-menu')} />;
@@ -975,11 +1285,11 @@ function App() {
           <main className="w-full max-w-7xl h-full flex flex-col md:flex-row gap-6">
             <div className="md:w-1/3 flex flex-col">
               <PlayerInfoPanel player={player} npcs={npcs} onItemClick={handleItemInteraction} activeSecretRealm={activeSecretRealm} />
-               {nextTournamentIn > 0 && 
-                <div className="panel-bg text-center p-2 mt-4 text-amber-300 shrink-0">
-                    Đại Hội Thiên Kiêu sau {Math.ceil(nextTournamentIn)} năm
-                </div>
-               }
+               <UpcomingEventsPanel 
+                    nextTournamentIn={nextTournamentIn}
+                    nextAuctionIn={nextAuctionIn}
+                    nextShopRefreshIn={nextShopRefreshIn}
+                />
             </div>
             <div className="md:w-2/3 flex flex-col min-h-0">
                 {tournament?.isActive ? (
@@ -988,7 +1298,7 @@ function App() {
                     <div className="panel-bg flex flex-col flex-grow min-h-0 p-6 gap-4">
                         <EventLogPanel eventLog={eventLog} />
                         {currentEvent ? ( <EventChoicePanel event={currentEvent} onSelectChoice={handleChoiceSelection} /> ) : (
-                          <GameControls onNextYear={handleNextYear} onTravel={() => setMapOpen(true)} onOpenShop={handleOpenShop} isLoading={isLoading} error={error} disabled={!!currentEvent} hasTraveledThisYear={hasTraveledThisYear} player={player} activeSecretRealm={activeSecretRealm} />
+                          <GameControls onNextYear={handleNextYear} onTravel={() => setMapOpen(true)} onOpenShop={handleOpenShop} isLoading={isLoading || !!gameState.activeConversation} error={error} disabled={!!currentEvent || !!auction?.isActive} hasTraveledThisYear={hasTraveledThisYear} player={player} activeSecretRealm={activeSecretRealm} />
                         )}
                     </div>
                 )}
@@ -1117,27 +1427,27 @@ function App() {
            }
 
       `}</style>
-      <header className="w-full max-w-7xl text-center mb-4 z-10">
-        <div className="flex justify-between items-center">
-            <div className="w-[200px] text-left">
+      <header className="w-full max-w-7xl mb-4 z-10">
+        <div className="flex flex-wrap sm:flex-nowrap justify-between items-center gap-2">
+            <div className="w-auto text-left">
                 {(currentView === 'playing' || currentView === 'character-creation') && (
                     <button onClick={() => setCurrentView('main-menu')} className="btn btn-dark py-1 px-3 text-sm">Về Menu</button>
                 )}
             </div>
-            <div className="flex-grow">
+            <div className="flex-grow text-center order-first w-full sm:order-none sm:w-auto">
                 {currentView === 'playing' && gameState.player ? (
                     <>
                         <h1 className="text-4xl md:text-5xl font-bold text-cyan-300 tracking-wider font-serif">Tu tiên 1 click</h1>
                         <p className="text-gray-400 mt-1">Năm thứ {Math.floor(gameState.year - 15)} trên con đường tu luyện</p>
                     </>
-                ) : <div className="h-[76px]"></div>}
+                ) : <div className="h-[76px] sm:h-auto"></div>}
             </div>
-            <div className="w-auto flex justify-end items-center gap-2">
+            <div className="w-auto flex justify-end items-center gap-2 flex-wrap">
                 {currentView === 'playing' && (
                     <>
-                        <button onClick={() => setRelationshipPanelOpen(true)} className="btn bg-pink-600/80 hover:bg-pink-500/90 py-1 px-3 text-sm whitespace-nowrap">Nhân Mạch</button>
-                        <button onClick={() => setRankingOpen(true)} className="btn btn-warning py-1 px-3 text-sm whitespace-nowrap">Xếp Hạng</button>
-                        <button onClick={handleSaveGame} className="btn btn-secondary py-1 px-3 text-sm whitespace-nowrap">Lưu</button>
+                        <button onClick={() => setRelationshipPanelOpen(true)} className="btn bg-pink-600/80 hover:bg-pink-500/90 py-1 px-3 text-sm">Nhân Mạch</button>
+                        <button onClick={() => setRankingOpen(true)} className="btn btn-warning py-1 px-3 text-sm">Xếp Hạng</button>
+                        <button onClick={handleSaveGame} className="btn btn-secondary py-1 px-3 text-sm">Lưu</button>
                         <input type="file" accept=".json" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
                     </>
                 )}
@@ -1148,7 +1458,7 @@ function App() {
       <div className="w-full flex-grow flex justify-center items-stretch z-10 min-h-0">
         {isMapOpen && gameState.player && <MapPanel currentLocation={gameState.player.currentLocation} onTravel={handleTravel} onClose={() => setMapOpen(false)} />}
         {isRankingOpen && <GeniusRankingPanel ranking={gameState.geniusRanking} onClose={() => setRankingOpen(false)} />}
-        {isRelationshipPanelOpen && gameState.player && <RelationshipPanel npcs={gameState.npcs} player={gameState.player} onClose={() => setRelationshipPanelOpen(false)} />}
+        {isRelationshipPanelOpen && gameState.player && <RelationshipPanel npcs={gameState.npcs} player={gameState.player} onClose={() => setRelationshipPanelOpen(false)} onUpdateAvatar={handleUpdateNpcAvatar} onStartConversation={handleStartConversation} />}
         {isShopOpen && gameState.player && (
             <ShopPanel
                 player={gameState.player}
@@ -1156,6 +1466,22 @@ function App() {
                 onClose={() => setShopOpen(false)}
                 onBuy={handleBuyItem}
                 onSell={handleSellItem}
+            />
+        )}
+        {isAuctionOpen && gameState.player && gameState.auction && (
+            <AuctionPanel
+                player={gameState.player}
+                auction={gameState.auction}
+                onClose={() => setAuctionOpen(false)}
+                onPlaceBid={handlePlaceBid}
+                onPass={handlePassAuctionItem}
+             />
+        )}
+        {gameState.activeConversation && (
+            <ConversationPanel
+                conversation={gameState.activeConversation}
+                onClose={() => setGameState(prev => ({...prev, activeConversation: null}))}
+                onSelectChoice={handleConversationResponse}
             />
         )}
         {selectedItem && (
