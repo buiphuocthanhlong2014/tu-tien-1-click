@@ -1,0 +1,225 @@
+export type ItemType = 'weapon' | 'armor' | 'accessory' | 'consumable' | 'techniqueScroll';
+
+export interface CultivationTechnique {
+  name: string;
+  rank: 'Phàm phẩm' | 'Linh phẩm' | 'Tiên phẩm';
+  description: string;
+  effects: {
+    cultivationBonus: number;
+  };
+}
+
+export interface Realm {
+  name: string;
+  minCultivation: number;
+  maxAge: number; // Thọ nguyên tối đa cho cảnh giới này
+}
+
+export interface Item {
+  id: string;
+  name: string;
+  type: ItemType;
+  description: string;
+  effects: {
+    attack?: number;
+    defense?: number;
+    health?: number;
+    cultivation?: number;
+  };
+  cost?: number;
+  technique?: CultivationTechnique;
+}
+
+export interface Quest {
+    id: string;
+    title: string;
+    description: string;
+    location: string; // Tên địa điểm để hoàn thành
+    difficulty: 'đơn giản' | 'trung bình' | 'khó';
+    duration: number; // in years
+    reward: {
+        linhThach?: number;
+        cultivation?: number;
+        item?: Item;
+    };
+}
+
+export interface ActiveQuest extends Quest {
+    progress: number; // years progressed
+}
+
+export interface Opponent {
+    id: string;
+    name: string;
+    title: string;
+    realm: string;
+    stats: {
+        attack: number;
+        defense: number;
+        health: number;
+    };
+}
+
+export interface Match {
+    player1: Player | Opponent;
+    player2: Player | Opponent;
+    winner: 'player1' | 'player2' | null;
+}
+
+export interface Tournament {
+    year: number;
+    isActive: boolean;
+    currentRound: number; // 1 = Vòng 1/16, 2 = Tứ kết, 3 = Bán kết, 4 = Chung kết
+    bracket: Match[][]; // Mảng các vòng đấu, mỗi vòng là một mảng các trận đấu
+}
+
+export interface RankEntry {
+    rank: number;
+    name: string;
+    realm: string;
+    year: number;
+    achievement: string;
+}
+
+export type Gender = 'Nam' | 'Nữ';
+export type RelationshipStatus = 'Tử địch' | 'Kẻ thù' | 'Xa lạ' | 'Người quen' | 'Bạn bè' | 'Thân thiết' | 'Tri kỷ' | 'Bạn đời';
+export type SectChoice = 'thiên kiếm' | 'vạn dược' | 'huyền phù';
+
+export interface NPC {
+    id: string;
+    name: string;
+    gender: Gender;
+    description: string;
+    realm: string;
+    cultivation: number;
+    relationshipPoints: number;
+    status: RelationshipStatus;
+    isLover: boolean;
+}
+
+export interface Pet {
+    id: string;
+    name: string;
+    species: string;
+    description: string;
+    effects: {
+        cultivationBonusPerYear?: number;
+    };
+}
+
+export interface SecretRealm {
+    id: string;
+    name:string;
+    description: string;
+    duration: number; // in years
+    progress: number; // years progressed
+    reward: {
+        linhThach?: number;
+        cultivation?: number;
+        item?: Item;
+    };
+}
+
+
+export interface Player {
+  name:string;
+  gender: Gender;
+  age: number;
+  health: number;
+  maxHealth: number;
+  realm: string;
+  cultivation: number;
+  cultivationForNextRealm: number;
+  stats: {
+    attack: number;
+    defense: number;
+  };
+  inventory: Item[];
+  equipment: {
+    weapon: Item | null;
+    armor: Item | null;
+    accessory: Item | null;
+  };
+  linhThach: number;
+  cultivationTechnique: CultivationTechnique | null;
+  currentLocation: string;
+  activeQuest: ActiveQuest | null;
+  talent: string;
+  talentCultivationBonus: number;
+  avatarUrl: string;
+  spouseId: string | null;
+  sect: string;
+  sectRank: string;
+  pets: Pet[];
+}
+
+export interface EventLogEntry {
+  id: number;
+  year: number;
+  text: string;
+  isMajor: boolean;
+}
+
+export interface EventChoice {
+    text: string;
+    effects: {
+        cultivationGained?: number;
+        healthChange?: number;
+        linhThachChange?: number;
+        newItem?: {
+            name: string;
+            type: ItemType;
+            description: string;
+            effects?: {
+                attack?: number;
+                defense?: number;
+                health?: number;
+                cultivation?: number;
+            };
+            technique?: CultivationTechnique;
+        };
+        newQuest?: Quest;
+        tournamentAction?: 'join' | 'decline' | 'fight';
+        relationshipChange?: {
+            npcId: string;
+            points: number;
+        };
+        newSpouse?: {
+            npcId: string;
+        };
+        newPet?: {
+            name: string;
+            species: string;
+            description: string;
+            effects: {
+                cultivationBonusPerYear?: number;
+            };
+        };
+        startSecretRealm?: Omit<SecretRealm, 'id' | 'progress'>;
+    }
+}
+
+export interface YearlyEvent {
+    description: string;
+    choices: EventChoice[];
+}
+
+export type Difficulty = 'đơn giản' | 'trung bình' | 'khó' | 'ác mộng';
+
+export interface GameState {
+  player: Player | null;
+  year: number;
+  eventLog: EventLogEntry[];
+  isGameOver: boolean;
+  isLoading: boolean;
+  error: string | null;
+  gameStarted: boolean;
+  currentEvent: YearlyEvent | null;
+  hasTraveledThisYear: boolean;
+  difficulty: Difficulty;
+  tournament: Tournament | null;
+  geniusRanking: RankEntry[];
+  npcs: NPC[];
+  nsfwAllowed: boolean;
+  activeSecretRealm: SecretRealm | null;
+}
