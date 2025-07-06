@@ -1,9 +1,4 @@
 
-
-
-
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { GameState, Player, Item, EventLogEntry, YearlyEvent, EventChoice, ActiveQuest, Quest, Difficulty, Opponent, Tournament, RankEntry, Match, NPC, RelationshipStatus, SectChoice, ItemType, Gender, SecretRealm, Auction, AuctionItem } from '../types';
 import { GeminiService, REALMS, LOCATIONS, CharacterCreationOptions, SECTS, TALENTS } from '../services/geminiService';
@@ -451,23 +446,36 @@ export const UpcomingEventsPanel: React.FC<{
     nextAuctionIn: number;
     nextShopRefreshIn: number;
 }> = ({ nextTournamentIn, nextAuctionIn, nextShopRefreshIn }) => {
+    const [isOpen, setIsOpen] = useState(false);
+
     return (
         <div className="panel-bg p-3 mt-4 text-sm shrink-0">
-            <h4 className="text-center font-serif text-cyan-300 mb-2">Sự Kiện Sắp Tới</h4>
-            <div className="space-y-1 text-gray-300">
-                <div className="flex justify-between">
-                    <span>Đại Hội Thiên Kiêu:</span>
-                    <span className="font-bold text-amber-300">{Math.ceil(nextTournamentIn)} năm</span>
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-full flex justify-between items-center text-left font-serif text-cyan-300"
+                aria-expanded={isOpen}
+            >
+                <h4 className="text-lg">Sự Kiện Sắp Tới</h4>
+                <svg className={`w-5 h-5 transform transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+            </button>
+            {isOpen && (
+                <div className="space-y-1 text-gray-300 animate-fade-in-fast mt-2">
+                    <div className="flex justify-between">
+                        <span>Đại Hội Thiên Kiêu:</span>
+                        <span className="font-bold text-amber-300">{Math.ceil(nextTournamentIn)} năm</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span>Đấu Giá Hội:</span>
+                        <span className="font-bold text-yellow-300">{Math.ceil(nextAuctionIn)} năm</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span>Làm mới Cửa Hàng:</span>
+                        <span className="font-bold text-purple-300">{Math.ceil(nextShopRefreshIn)} năm</span>
+                    </div>
                 </div>
-                <div className="flex justify-between">
-                    <span>Đấu Giá Hội:</span>
-                    <span className="font-bold text-yellow-300">{Math.ceil(nextAuctionIn)} năm</span>
-                </div>
-                <div className="flex justify-between">
-                    <span>Làm mới Cửa Hàng:</span>
-                    <span className="font-bold text-purple-300">{Math.ceil(nextShopRefreshIn)} năm</span>
-                </div>
-            </div>
+            )}
         </div>
     );
 };
@@ -483,7 +491,7 @@ export const QuestTracker: React.FC<{ quest: ActiveQuest }> = ({ quest }) => {
             <div className="text-sm">
                 <p><strong>Tiến độ:</strong> {quest.progress} / {quest.duration} lượt</p>
                 <div className="w-full bg-gray-700/80 rounded-full h-3 my-1 border border-yellow-500/30 overflow-hidden">
-                    <div className="bg-gradient-to-r from-yellow-500 to-amber-400 h-full rounded-full transition-all duration-500" style={{ width: `${progressPercentage}%` }}></div>
+                    <div className="bg-yellow-500 h-full rounded-full transition-all duration-500" style={{ width: `${progressPercentage}%` }}></div>
                 </div>
                 <p><strong>Phần thưởng:</strong> {quest.reward.linhThach ?? 0} Linh Thạch</p>
             </div>
@@ -501,7 +509,7 @@ export const SecretRealmTracker: React.FC<{ realm: SecretRealm }> = ({ realm }) 
             <div className="text-sm">
                 <p><strong>Tiến độ:</strong> {realm.progress} / {realm.duration} lượt</p>
                 <div className="w-full bg-gray-700/80 rounded-full h-3 my-1 border border-purple-500/30 overflow-hidden">
-                    <div className="bg-gradient-to-r from-purple-500 to-fuchsia-500 h-full rounded-full transition-all duration-500" style={{ width: `${progressPercentage}%` }}></div>
+                    <div className="bg-purple-500 h-full rounded-full transition-all duration-500" style={{ width: `${progressPercentage}%` }}></div>
                 </div>
                 <p><strong>Phần thưởng khi hoàn thành:</strong> {realm.reward.cultivation ?? 0} Tu vi, {realm.reward.linhThach ?? 0} Linh Thạch</p>
             </div>
@@ -549,7 +557,7 @@ const StatusBar: React.FC<{ player: Player }> = ({ player }) => {
          <div className="space-y-2">
              <div title="Sinh mệnh">
                 <div className="w-full bg-slate-900 rounded-full h-5 border border-red-500/30 overflow-hidden flex items-center">
-                    <div className="bg-gradient-to-r from-red-500 to-orange-400 h-full transition-all duration-500 flex items-center justify-end px-2" style={{ width: `${healthPercentage}%` }}>
+                    <div className="bg-red-500 h-full transition-all duration-500 flex items-center justify-end px-2" style={{ width: `${healthPercentage}%` }}>
                        <HeartIcon />
                     </div>
                 </div>
@@ -557,7 +565,7 @@ const StatusBar: React.FC<{ player: Player }> = ({ player }) => {
              </div>
              <div title="Tu vi">
                 <div className="w-full bg-slate-900 rounded-full h-2.5 border border-cyan-500/30 overflow-hidden">
-                    <div className="bg-gradient-to-r from-cyan-500 to-teal-400 h-full transition-all duration-500" style={{ width: `${cultivationPercentage}%` }}></div>
+                    <div className="bg-cyan-500 h-full transition-all duration-500" style={{ width: `${cultivationPercentage}%` }}></div>
                 </div>
                 <p className="text-xs text-center text-cyan-200 mt-1">{Math.floor(player.cultivation)} / {player.cultivationForNextRealm} (cảnh giới kế)</p>
              </div>

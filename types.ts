@@ -45,6 +45,8 @@ export interface Quest {
     healthCostPerTurn?: number;
 }
 
+export type NewQuestData = Omit<Quest, 'id'>;
+
 export interface ActiveQuest extends Quest {
     progress: number; // turns progressed
 }
@@ -182,8 +184,9 @@ export interface EventChoice {
                 cultivation?: number;
             };
             technique?: CultivationTechnique;
+            cost?: number;
         };
-        newQuest?: Quest;
+        newQuest?: NewQuestData;
         tournamentAction?: 'join' | 'decline' | 'fight';
         auctionAction?: 'join' | 'decline';
         relationshipChange?: {

@@ -1,7 +1,8 @@
 
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { GameState, Player, Item, EventLogEntry, YearlyEvent, EventChoice, ActiveQuest, Quest, Difficulty, Opponent, Tournament, RankEntry, Match, NPC, RelationshipStatus, SectChoice, ItemType, Gender, Pet, SecretRealm, Auction } from './types';
-import { GeminiService, REALMS, SECT_RANKS, CharacterCreationOptions, INITIAL_NPCS, generateShopStock, TECHNIQUES, TALENTS, generateAuctionItems } from './services/geminiService';
+import { GameState, Player, Item, EventLogEntry, YearlyEvent, EventChoice, ActiveQuest, Quest, Difficulty, Opponent, Tournament, RankEntry, Match, NPC, RelationshipStatus, SectChoice, ItemType, Gender, Pet, SecretRealm, Auction, NewQuestData } from './types';
+import { GeminiService, REALMS, SECT_RANKS, CharacterCreationOptions, INITIAL_NPCS, generateShopStock, TECHNIQUES, TALENTS, generateAuctionItems, SECTS } from './services/geminiService';
 import { EventLogPanel } from './components/StoryLog';
 import { GameControls } from './components/PlayerInput';
 import { GameOverlay } from './components/GameOverlay';
@@ -313,10 +314,12 @@ function App() {
 
     if (p.age % 1 === 0) {
         const currentRankDetails = SECT_RANKS.find(r => r.name === p.sectRank);
-        if (currentRankDetails && currentRankDetails.salary > 0) {
+        if (currentRankDetails?.salary) {
             const salary = Math.round(currentRankDetails.salary * p.linhThachGainModifier);
-            p.linhThach += salary;
-            newLogEntries.push({ id: gameState.eventLog.length + 6, year: p.age, text: `Bạn nhận được ${salary} linh thạch bổng lộc hàng năm từ chức vụ ${p.sectRank}.`, isMajor: false });
+            if (salary > 0) {
+              p.linhThach += salary;
+              newLogEntries.push({ id: gameState.eventLog.length + 6, year: p.age, text: `Bạn nhận được ${salary} linh thạch bổng lộc hàng năm từ chức vụ ${p.sectRank}.`, isMajor: false });
+            }
         }
     }
 
@@ -443,23 +446,29 @@ function App() {
                 newLogEntries.push({ id: prev.eventLog.length, year: p.age, text: `**ĐỘT PHÁ THÀNH CÔNG!** Lôi kiếp tan biến, bạn đã từ ${oldRealmName} tiến lên cảnh giới **${p.realm}**!`, isMajor: true });
 
                 // Promotion logic
-                const newRealmIndex = REALMS.findIndex(r => r.name === p.realm);
-                const currentRankIndex = SECT_RANKS.findIndex(r => r.name === p.sectRank);
-                const eligibleRank = [...SECT_RANKS].reverse().find(rank => {
-                    const requiredRealmIndex = REALMS.findIndex(r => r.name === rank.realmRequired);
-                    return newRealmIndex >= requiredRealmIndex;
-                });
-
-                if (eligibleRank) {
-                    const eligibleRankIndex = SECT_RANKS.findIndex(r => r.name === eligibleRank.name);
-                    if (eligibleRankIndex > currentRankIndex) {
-                        p.sectRank = eligibleRank.name;
-                        newLogEntries.push({ id: prev.eventLog.length + 150, year: p.age, text: `**THĂNG CHỨC!** Do tu vi đột phá, bạn đã được thăng lên chức vụ **${p.sectRank}** trong tông môn!`, isMajor: true });
-                        if (eligibleRank.name === 'Trưởng Lão') {
-                            const sectTechnique = TECHNIQUES.find(t => t.name === 'Nguyên Khí Chân Quyết');
-                            if (sectTechnique) {
-                                p.cultivationTechnique = sectTechnique;
-                                newLogEntries.push({ id: prev.eventLog.length + 160, year: p.age, text: `Do được thăng chức, bạn được tông môn ban thưởng công pháp: <strong>${sectTechnique.name}</strong>!`, isMajor: true });
+                const knownSectNames = Object.values(SECTS).map(s => s.name);
+                if (knownSectNames.includes(p.sect)) {
+                    const newRealmIndex = REALMS.findIndex(r => r.name === p.realm);
+                    if (newRealmIndex === -1) return prev; // Should not happen
+                    
+                    const currentRankIndex = SECT_RANKS.findIndex(r => r.name === p.sectRank);
+                    
+                    const eligibleRank = [...SECT_RANKS].reverse().find(rank => {
+                        const requiredRealmIndex = REALMS.findIndex(r => r.name === rank.realmRequired);
+                        return requiredRealmIndex !== -1 && newRealmIndex >= requiredRealmIndex;
+                    });
+    
+                    if (eligibleRank) {
+                        const eligibleRankIndex = SECT_RANKS.findIndex(r => r.name === eligibleRank.name);
+                        if (eligibleRankIndex > currentRankIndex) {
+                            p.sectRank = eligibleRank.name;
+                            newLogEntries.push({ id: prev.eventLog.length + 150, year: p.age, text: `**THĂNG CHỨC!** Do tu vi đột phá, bạn đã được thăng lên chức vụ **${p.sectRank}** trong tông môn!`, isMajor: true });
+                            if (eligibleRank.name === 'Trưởng Lão') {
+                                const sectTechnique = TECHNIQUES.find(t => t.name === 'Nguyên Khí Chân Quyết');
+                                if (sectTechnique) {
+                                    p.cultivationTechnique = sectTechnique;
+                                    newLogEntries.push({ id: prev.eventLog.length + 160, year: p.age, text: `Do được thăng chức, bạn được tông môn ban thưởng công pháp: <strong>${sectTechnique.name}</strong>!`, isMajor: true });
+                                }
                             }
                         }
                     }
@@ -505,9 +514,17 @@ function App() {
     p.health = Math.min(p.maxHealth, p.health);
 
     const currentRealmDetails = REALMS.find(r => r.name === p.realm);
-    if (currentRealmDetails && p.age > currentRealmDetails.maxAge) {
-        isGameOver = true;
-        logBuffer.push({ id: idOffset, year: p.age, text: `**THỌ NGUYÊN ĐÃ CẠN!** Dù tu vi cao thâm, bạn vẫn không thể chống lại quy luật của thời gian. Thọ nguyên đã hết, thân tử đạo tiêu.`, isMajor: true });
+    if (currentRealmDetails) {
+        if (p.age > currentRealmDetails.maxAge) {
+            isGameOver = true;
+            logBuffer.push({ id: idOffset, year: p.age, text: `**THỌ NGUYÊN ĐÃ CẠN!** Dù tu vi cao thâm, bạn vẫn không thể chống lại quy luật của thời gian. Thọ nguyên đã hết, thân tử đạo tiêu.`, isMajor: true });
+        }
+    } else {
+        // Self-healing for invalid realm data
+        logBuffer.push({ id: idOffset, year: p.age, text: `**LỖI DỮ LIỆU!** Cảnh giới của bạn không hợp lệ (${p.realm}), đã được thiết lập lại về Luyện Khí.`, isMajor: true });
+        p.realm = REALMS[0].name;
+        p.cultivation = 0;
+        p.cultivationForNextRealm = REALMS[1].minCultivation;
     }
     
     if(p.health <= 0 && !isGameOver) {
@@ -635,10 +652,10 @@ function App() {
                     const reward = roundRewards[tournament.currentRound - 1];
                     player.linhThach += Math.round(reward.lt * player.linhThachGainModifier);
                     player.cultivation += Math.round(reward.cv * player.cultivationGainModifier);
-                    newLog.unshift({ id: newLog.length, year: currentYear, text: `Bạn nhận được ${Math.round(reward.lt * player.linhThachGainModifier)} linh thạch và ${Math.round(reward.cv * player.cultivationGainModifier)} tu vi.`, isMajor: false });
+                    newLog.unshift({ id: newLog.length + 1, year: currentYear, text: `Bạn nhận được ${Math.round(reward.lt * player.linhThachGainModifier)} linh thạch và ${Math.round(reward.cv * player.cultivationGainModifier)} tu vi.`, isMajor: false });
                     
                     if (tournament.currentRound === 3) { 
-                         newLog.unshift({ id: newLog.length, year: currentYear, text: `**BẠN LÀ NHÀ VÔ ĐỊCH ĐẠI HỘI THIÊN KIÊU!** Tiếng tăm của bạn vang dội khắp nơi!`, isMajor: true });
+                         newLog.unshift({ id: newLog.length + 2, year: currentYear, text: `**BẠN LÀ NHÀ VÔ ĐỊCH ĐẠI HỘI THIÊN KIÊU!** Tiếng tăm của bạn vang dội khắp nơi!`, isMajor: true });
                          const newRankEntry: RankEntry = {
                              rank: prev.geniusRanking.length + 1,
                              name: player.name,
@@ -663,12 +680,12 @@ function App() {
                          const nextPlayerMatch = nextRound.find(m => (m.player1 as Player).name === player.name || (m.player2 as Player).name === player.name);
                          newEvent = nextPlayerMatch ? createMatchEvent(nextPlayerMatch) : null;
                          if (!newEvent) {
-                             newLog.unshift({ id: newLog.length, year: currentYear, text: `Bạn không có đối thủ ở vòng tiếp theo, giải đấu đã kết thúc.`, isMajor: true });
+                             newLog.unshift({ id: newLog.length + 3, year: currentYear, text: `Bạn không có đối thủ ở vòng tiếp theo, giải đấu đã kết thúc.`, isMajor: true });
                              tournament = null;
                          }
                     }
                 } else {
-                    newLog.unshift({ id: newLog.length, year: currentYear, text: `Hành trình của bạn tại Đại Hội Thiên Kiêu đã kết thúc.`, isMajor: true });
+                    newLog.unshift({ id: newLog.length + 4, year: currentYear, text: `Hành trình của bạn tại Đại Hội Thiên Kiêu đã kết thúc.`, isMajor: true });
                     tournament = null;
                 }
             }
@@ -694,10 +711,12 @@ function App() {
 
         if (p.age % 1 === 0) {
             const currentRankDetails = SECT_RANKS.find(r => r.name === p.sectRank);
-            if (currentRankDetails && currentRankDetails.salary > 0) {
+            if (currentRankDetails?.salary) {
                 const salary = Math.round(currentRankDetails.salary * p.linhThachGainModifier);
-                p.linhThach += salary;
-                newLogEntries.push({ id: prev.eventLog.length + 5, year: p.age, text: `Bạn nhận được ${salary} linh thạch bổng lộc hàng năm từ chức vụ ${p.sectRank}.`, isMajor: false });
+                 if (salary > 0) {
+                    p.linhThach += salary;
+                    newLogEntries.push({ id: prev.eventLog.length + 5, year: p.age, text: `Bạn nhận được ${salary} linh thạch bổng lộc hàng năm từ chức vụ ${p.sectRank}.`, isMajor: false });
+                }
             }
         }
         
@@ -739,14 +758,15 @@ function App() {
             p.health = Math.max(0, Math.min(p.maxHealth, p.health + (effects.healthChange ?? 0)));
             
             if (effects.newItem) {
-                const newItemData = effects.newItem as any;
+                const newItemData = effects.newItem;
                 const newItem: Item = {
                     id: `${Date.now()}-${newItemData.name}`,
                     name: newItemData.name,
-                    type: newItemData.type,
+                    type: newItemData.type as ItemType,
                     description: newItemData.description,
                     effects: newItemData.effects || {},
                     technique: newItemData.technique,
+                    cost: newItemData.cost ?? 0,
                 };
                 if(newItem.effects.cultivation) {
                     newItem.effects.cultivation = Math.round(newItem.effects.cultivation / 2);
@@ -779,17 +799,24 @@ function App() {
             }
 
             if (effects.newQuest && !p.activeQuest && !activeSecretRealm) {
-                const quest = effects.newQuest;
-                if (quest.reward.cultivation) {
-                    quest.reward.cultivation = Math.round(quest.reward.cultivation / 2);
+                const questData = effects.newQuest;
+                if (questData.reward.cultivation) {
+                    questData.reward.cultivation = Math.round(questData.reward.cultivation / 2);
                 }
-                p.activeQuest = { ...quest, progress: 0 };
-                newLogEntries.push({ id: prev.eventLog.length + 300, year: p.age, text: `**Nhiệm vụ mới:** Bạn đã nhận nhiệm vụ "${quest.title}".`, isMajor: true });
+                 // Robustness check for title
+                const questTitle = questData.title && questData.title.trim() !== '' ? questData.title : 'Nhiệm vụ không tên';
+                p.activeQuest = { 
+                    ...questData, 
+                    title: questTitle,
+                    id: `quest-${Date.now()}-${Math.random()}`,
+                    progress: 0
+                };
+                newLogEntries.push({ id: prev.eventLog.length + 300, year: p.age, text: `**Nhiệm vụ mới:** Bạn đã nhận nhiệm vụ "${questTitle}".`, isMajor: true });
             }
             
             if (effects.relationshipChange) {
                 const { npcId, points } = effects.relationshipChange;
-                const npcIndex = npcs.findIndex(n => n.id === npcId);
+                const npcIndex = npcs.findIndex((n: NPC) => n.id === npcId);
                 if (npcIndex !== -1) {
                     const npc = npcs[npcIndex];
                     npc.relationshipPoints += (points * 2);
@@ -803,7 +830,7 @@ function App() {
 
             if (effects.newSpouse) {
                 const { npcId } = effects.newSpouse;
-                const npcIndex = npcs.findIndex(n => n.id === npcId);
+                const npcIndex = npcs.findIndex((n: NPC) => n.id === npcId);
                 if (npcIndex !== -1 && !p.spouseId) {
                     p.spouseId = npcId;
                     npcs[npcIndex].isLover = true;
@@ -876,7 +903,12 @@ function App() {
     }
   };
   
-  const loadGameFromState = (loadedState: GameState) => {
+  const loadGameFromState = (loadedState: any) => {
+    if (typeof loadedState !== 'object' || loadedState === null || !loadedState.player) {
+        alert("Tệp lưu không hợp lệ hoặc bị hỏng.");
+        return;
+    }
+
     if(loadedState.player) {
         // --- MIGRATION LOGIC & ROBUSTNESS ---
         if (!loadedState.player.stats) { loadedState.player.stats = { attack: 5, defense: 5 }; }
@@ -1193,13 +1225,13 @@ function App() {
                 }
             } else {
                 const message = `Không ai trả giá cho <strong>${currentAuctionItem.item.name}</strong>, vật phẩm đã bị lưu trữ.`;
-                newLogEntries.unshift({ id: newLogEntries.length, year: prev.year, text: message, isMajor: false });
+                newLogEntries.unshift({ id: newLogEntries.length + 1, year: prev.year, text: message, isMajor: false });
             }
             
             auction.currentItemIndex++;
             if (auction.currentItemIndex >= auction.items.length) {
                 auction.isActive = false;
-                newLogEntries.unshift({ id: newLogEntries.length + 1, year: prev.year, text: "Đấu giá hội đã kết thúc.", isMajor: true });
+                newLogEntries.unshift({ id: newLogEntries.length + 2, year: prev.year, text: "Đấu giá hội đã kết thúc.", isMajor: true });
             } else {
                 auction.log = ["Vật phẩm tiếp theo đã được đưa lên!"];
             }
@@ -1283,7 +1315,7 @@ function App() {
         
         return (
           <main className="w-full max-w-7xl h-full flex flex-col md:flex-row gap-6">
-            <div className="md:w-1/3 flex flex-col">
+            <div className="flex flex-col basis-[35%] md:basis-[35%] min-h-0">
               <PlayerInfoPanel player={player} npcs={npcs} onItemClick={handleItemInteraction} activeSecretRealm={activeSecretRealm} />
                <UpcomingEventsPanel 
                     nextTournamentIn={nextTournamentIn}
@@ -1291,7 +1323,7 @@ function App() {
                     nextShopRefreshIn={nextShopRefreshIn}
                 />
             </div>
-            <div className="md:w-2/3 flex flex-col min-h-0">
+            <div className="flex flex-col min-h-0 basis-[65%] md:basis-[65%]">
                 {tournament?.isActive ? (
                     <TournamentPanel tournament={tournament} player={player} event={currentEvent} onSelectChoice={handleChoiceSelection} />
                 ) : (
@@ -1448,12 +1480,13 @@ function App() {
                         <button onClick={() => setRelationshipPanelOpen(true)} className="btn bg-pink-600/80 hover:bg-pink-500/90 py-1 px-3 text-sm">Nhân Mạch</button>
                         <button onClick={() => setRankingOpen(true)} className="btn btn-warning py-1 px-3 text-sm">Xếp Hạng</button>
                         <button onClick={handleSaveGame} className="btn btn-secondary py-1 px-3 text-sm">Lưu</button>
-                        <input type="file" accept=".json" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
                     </>
                 )}
             </div>
         </div>
       </header>
+      
+      <input type="file" accept=".json" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
 
       <div className="w-full flex-grow flex justify-center items-stretch z-10 min-h-0">
         {isMapOpen && gameState.player && <MapPanel currentLocation={gameState.player.currentLocation} onTravel={handleTravel} onClose={() => setMapOpen(false)} />}

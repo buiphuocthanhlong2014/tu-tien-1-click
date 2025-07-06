@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { Player, Realm, Item, ItemType, CultivationTechnique, YearlyEvent, Quest, Difficulty, NPC, SectChoice, Gender, AuctionItem } from '../types';
+import { Player, Realm, Item, ItemType, CultivationTechnique, YearlyEvent, Quest, Difficulty, NPC, SectChoice, Gender, AuctionItem, NewQuestData } from '../types';
 
 export const REALMS: Realm[] = [
     { name: 'Luyện Khí', minCultivation: 0, maxAge: 100 },
@@ -511,22 +511,21 @@ export class GeminiService {
         4.  **Lựa Chọn May Rủi:** Đối với các lựa chọn có kết quả không chắc chắn (ví dụ: đột phá mạo hiểm, trộm cắp, thuyết phục một nhân vật khó tính, khám phá một nơi nguy hiểm), bạn có thể tùy chọn thêm trường \`"successChance": <số_nguyên_từ_1_đến_100>\`. Ví dụ: \`"text": "Thử đột nhập vào kho tàng", "successChance": 40, "effects": { "newItem": ... }\`. **Hiệu ứng trong 'effects' chỉ áp dụng khi thành công.** Game sẽ tự xử lý hậu quả khi thất bại. Nếu bạn không cung cấp, lựa chọn được coi là thành công 100%.
         5.  **Xử lý Nhiệm vụ:** Nếu người chơi đang ở sai vị trí nhiệm vụ, tạo sự kiện nhắc nhở họ di chuyển đến ${player.activeQuest?.location ?? 'địa điểm nhiệm vụ'}.
         6.  **Nhận Nhiệm vụ mới:** Nếu người chơi đang ở trong tông môn của họ (${player.sect}) và không có nhiệm vụ, ưu tiên tạo sự kiện nhận nhiệm vụ mới.
+            - **Yêu cầu Nhiệm vụ:** Mỗi đối tượng \`newQuest\` BẮT BUỘC phải có một trường \`title\` là một chuỗi văn bản ngắn gọn, hấp dẫn, không được để trống hoặc là "undefined". Ví dụ: "Thu Thập Huyết Tinh Thảo", "Diệt Trừ Lang Yêu". Ngoài ra, phải có \`description\`, \`location\`, \`difficulty\`, \`duration\`, \`reward\` và \`healthCostPerTurn\`.
             - **Vị trí & Thời gian:** Trường "location" cho nhiệm vụ mới PHẢI LÀ MỘT trong các địa điểm hợp lệ sau: ${validLocations}. Thời gian (\`duration\`) tính bằng LƯỢT (mỗi lượt là 6 tháng).
             - **Rủi ro & Tổn thất:** Bắt buộc thêm trường \`"healthCostPerTurn"\` vào mỗi nhiệm vụ. Đây là lượng HP người chơi mất MỖI LƯỢT làm nhiệm vụ. Chi phí này phải hợp lý: nhiệm vụ an toàn (giao hàng, đưa thư) mất 0-5 HP; nhiệm vụ thu thập (hái thuốc ở nơi nguy hiểm) mất 5-15 HP; nhiệm vụ chiến đấu (săn yêu thú, diệt trừ ma tu) mất 10-30 HP.
-            - **Nhiệm vụ Đa dạng:** Các nhiệm vụ thu thập vật phẩm (như hái linh dược) nên có rủi ro tiềm ẩn (ví dụ: yêu thú canh gác) được mô tả trong nhiệm vụ và phản ánh trong \`healthCostPerTurn\`.
-        7.  **Vật Phẩm Mới:** 'newItem' là một đối tượng. Nó có thể là trang bị, đan dược, bí tịch hoặc nguyên liệu.
+        7.  **Vật Phẩm Mới:** 'newItem' là một đối tượng. Nó có thể là trang bị, đan dược, bí tịch hoặc nguyên liệu. Khi tạo 'newItem', nếu đó là vật phẩm có thể mua bán, hãy tùy chọn thêm trường "cost" là giá trị cơ bản của nó bằng linh thạch.
             - \`type\`: 'weapon', 'armor', 'accessory', 'consumable', 'techniqueScroll', 'material'.
             - \`effects\`: Một đối tượng chứa \`attack\`, \`defense\`, \`health\`, \`cultivation\`. Chỉ áp dụng cho trang bị và đan dược. Đối với 'material', hãy để \`effects\` là một đối tượng trống.
             - \`technique\`: Một đối tượng \`CultivationTechnique\`. Chỉ áp dụng cho \`techniqueScroll\`.
             - **Hãy tạo ra các loại đan dược mạnh hơn và trang bị đa dạng hơn, đặc biệt khi người chơi ở cảnh giới cao. Lượng tu vi nhận được nên hợp lý, tránh cho quá nhiều.**
-            - **Trong Bí Cảnh, bạn có thể thưởng cho người chơi những vật phẩm cực hiếm như Bí tịch Công pháp Tiên phẩm.**
         8.  **Sủng Vật Mới:** 'newPet' là một đối tượng để ban thưởng sủng vật đồng hành.
             - \`name\`, \`species\`, \`description\`: Mô tả về sủng vật.
             - \`effects\`: Bắt buộc phải có \`cultivationBonusPerYear\` để tăng tu vi mỗi năm cho người chơi.
         9.  **Bí Cảnh:** 'startSecretRealm' là một đối tượng để bắt đầu một cuộc thám hiểm lớn.
             - Sự kiện này PHẢI hiếm.
             - \`name\`, \`description\`, \`duration\` (số lượt), \`reward\` (phần thưởng lớn khi hoàn thành).
-        10. **KHÔNG SỬ DỤNG:** Tuyệt đối không tạo hiệu ứng "questProgress", "breakthroughAttempt", "auctionAction".
+        10. **KHÔNG SỬ DỤNG:** Tuyệt đối không tạo hiệu ứng "questProgress", "breakthroughAttempt", "auctionAction". Không tự tạo trường "id" cho các vật phẩm, nhiệm vụ, hoặc bí cảnh mới; hệ thống sẽ tự xử lý.
 
         CẤU TRÚC JSON:
         { 
@@ -534,15 +533,20 @@ export class GeminiService {
           "choices": [ 
             { 
               "text": "Mô tả lựa chọn chắc chắn", 
-              "effects": { 
-                "cultivationGained": 5, "healthChange": -5, "linhThachChange": 10
-              } 
+              "effects": { "cultivationGained": 5, "healthChange": -5 } 
             },
             {
-              "text": "Mô tả lựa chọn may rủi",
-              "successChance": 60,
+              "text": "Lựa chọn nhận nhiệm vụ",
               "effects": {
-                 "newItem": { "name": "Huyết Tinh Đan", "type": "consumable", "description": "Đan dược giúp tăng cường tu vi.", "effects": { "cultivation": 250 } }
+                 "newQuest": {
+                   "title": "Thu Thập Thảo Dược",
+                   "description": "Một trưởng lão cần bạn thu thập 10 cây Huyết Linh Chi.",
+                   "location": "Rừng Rậm",
+                   "difficulty": "đơn giản",
+                   "duration": 2,
+                   "healthCostPerTurn": 5,
+                   "reward": { "linhThach": 100, "cultivation": 50 }
+                 }
               }
             }
           ] 
