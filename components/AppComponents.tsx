@@ -1,8 +1,45 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { GameState, Player, Item, EventLogEntry, YearlyEvent, EventChoice, ActiveQuest, Quest, Difficulty, Opponent, Tournament, RankEntry, Match, NPC, RelationshipStatus, SectChoice, ItemType, Gender, SecretRealm, Auction, AuctionItem } from '../types';
 import { GeminiService, REALMS, LOCATIONS, CharacterCreationOptions, SECTS, TALENTS } from '../services/geminiService';
 import { ImageDisplay } from './ImageDisplay';
+
+export const LocationImageDisplay: React.FC<{ imageUrl: string; isLoading: boolean }> = ({ imageUrl, isLoading }) => {
+  return (
+    <div className="absolute inset-0 w-full h-full overflow-hidden -z-10">
+      <style>{`
+        @keyframes kenburns-top {
+          0% { transform: scale(1) translateY(0); transform-origin: 50% 16%; }
+          100% { transform: scale(1.1) translateY(-10px); transform-origin: top; }
+        }
+        .animate-kenburns {
+          animation: kenburns-top 40s ease-out both infinite alternate;
+        }
+        .image-overlay {
+          background: linear-gradient(to bottom, rgba(6, 9, 19, 0.8) 0%, rgba(6, 9, 19, 0.4) 50%, rgba(6, 9, 19, 0.9) 100%), radial-gradient(ellipse at 50% 50%, rgba(20, 30, 60, 0) 0%, #060913 100%);
+        }
+      `}</style>
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-900/50 z-20 animate-fade-in-fast">
+          <svg className="animate-spin h-10 w-10 text-cyan-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+           <p className="ml-4 text-cyan-200">Vẽ lên khung cảnh...</p>
+        </div>
+      )}
+      {imageUrl && (
+        <img
+          key={imageUrl}
+          src={imageUrl}
+          alt="Bối cảnh"
+          className="absolute inset-0 w-full h-full object-cover animate-fade-in-fast animate-kenburns"
+        />
+      )}
+      <div className="absolute inset-0 image-overlay"></div>
+    </div>
+  );
+};
+
 
 type FamilyChoice = 'thương nhân' | 'võ gia' | 'suy tàn';
 
@@ -318,7 +355,7 @@ const RelationshipProgressBar: React.FC<{ points: number }> = ({ points }) => {
 
     return (
         <div className="w-full bg-slate-700 rounded-full h-2">
-            <div className={`${colorClass} h-2 rounded-full transition-all duration-500`} style={{ width: `${percentage}%` }}></div>
+            <div className={`${colorClass} h-2 rounded-full`} style={{ width: `${percentage}%` }}></div>
         </div>
     );
 };
@@ -491,7 +528,7 @@ export const QuestTracker: React.FC<{ quest: ActiveQuest }> = ({ quest }) => {
             <div className="text-sm">
                 <p><strong>Tiến độ:</strong> {quest.progress} / {quest.duration} lượt</p>
                 <div className="w-full bg-gray-700/80 rounded-full h-3 my-1 border border-yellow-500/30 overflow-hidden">
-                    <div className="bg-yellow-500 h-full rounded-full transition-all duration-500" style={{ width: `${progressPercentage}%` }}></div>
+                    <div className="bg-yellow-500 h-full rounded-full" style={{ width: `${progressPercentage}%` }}></div>
                 </div>
                 <p><strong>Phần thưởng:</strong> {quest.reward.linhThach ?? 0} Linh Thạch</p>
             </div>
@@ -509,7 +546,7 @@ export const SecretRealmTracker: React.FC<{ realm: SecretRealm }> = ({ realm }) 
             <div className="text-sm">
                 <p><strong>Tiến độ:</strong> {realm.progress} / {realm.duration} lượt</p>
                 <div className="w-full bg-gray-700/80 rounded-full h-3 my-1 border border-purple-500/30 overflow-hidden">
-                    <div className="bg-purple-500 h-full rounded-full transition-all duration-500" style={{ width: `${progressPercentage}%` }}></div>
+                    <div className="bg-purple-500 h-full rounded-full" style={{ width: `${progressPercentage}%` }}></div>
                 </div>
                 <p><strong>Phần thưởng khi hoàn thành:</strong> {realm.reward.cultivation ?? 0} Tu vi, {realm.reward.linhThach ?? 0} Linh Thạch</p>
             </div>
@@ -519,25 +556,43 @@ export const SecretRealmTracker: React.FC<{ realm: SecretRealm }> = ({ realm }) 
 
 export const MapPanel: React.FC<{ currentLocation: string; onTravel: (location: string) => void; onClose: () => void; }> = ({ currentLocation, onTravel, onClose }) => (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in-fast" onClick={onClose}>
-        <div className="panel-bg p-6 max-w-lg w-full" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-3xl font-serif text-cyan-300 text-center mb-6">Bản Đồ</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {LOCATIONS.map(location => (
-                    <button 
-                        key={location.id}
-                        onClick={() => onTravel(location.name)}
-                        disabled={currentLocation === location.name}
-                        className="p-4 bg-gray-800/60 rounded-md hover:bg-gray-700/70 border-2 border-transparent hover:border-cyan-400/50 disabled:bg-cyan-900/50 disabled:cursor-not-allowed disabled:text-cyan-200 transition-all duration-200 text-center"
-                    >
-                        <h3 className="text-xl font-semibold text-yellow-300">{location.name}</h3>
-                        <p className="text-gray-400 text-sm">{location.description}</p>
-                    </button>
-                ))}
+        <div
+            className="panel-bg p-4 sm:p-6 max-w-lg w-full mx-4 flex flex-col max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+        >
+            <h2 className="text-3xl font-serif text-cyan-300 text-center mb-4 shrink-0">Bản Đồ</h2>
+
+            <div className="flex-grow overflow-y-auto custom-scrollbar -mr-2 pr-2">
+                <div className="space-y-3">
+                    {LOCATIONS.map(location => {
+                        const isCurrent = currentLocation === location.name;
+                        return (
+                            <button
+                                key={location.id}
+                                onClick={() => onTravel(location.name)}
+                                disabled={isCurrent}
+                                className={`p-4 w-full bg-gray-800/60 rounded-lg border-2 text-left transition-all duration-200
+                                    ${isCurrent
+                                        ? 'border-cyan-400 bg-cyan-900/50 cursor-default'
+                                        : 'border-gray-700 hover:border-cyan-500 hover:bg-gray-700/80'}
+                                `}
+                            >
+                                <div className="flex justify-between items-center">
+                                    <h3 className={`text-xl font-semibold ${isCurrent ? 'text-cyan-300' : 'text-yellow-300'}`}>{location.name}</h3>
+                                    {isCurrent && <span className="text-xs font-bold bg-cyan-500 text-black px-2 py-1 rounded-full">Hiện tại</span>}
+                                </div>
+                                <p className="text-gray-400 text-sm mt-1">{location.description}</p>
+                            </button>
+                        );
+                    })}
+                </div>
             </div>
-             <button onClick={onClose} className="mt-6 w-full btn btn-dark">Đóng</button>
+
+            <button onClick={onClose} className="mt-4 w-full btn btn-dark shrink-0">Đóng</button>
         </div>
     </div>
 );
+
 
 const StatDisplay: React.FC<{ icon: React.ReactNode; label: string; value: string | number; className?: string; }> = ({ icon, label, value, className = '' }) => (
     <div className={`flex items-center space-x-2 bg-slate-800/50 p-2 rounded-lg flex-grow ${className}`}>
@@ -557,15 +612,15 @@ const StatusBar: React.FC<{ player: Player }> = ({ player }) => {
          <div className="space-y-2">
              <div title="Sinh mệnh">
                 <div className="w-full bg-slate-900 rounded-full h-5 border border-red-500/30 overflow-hidden flex items-center">
-                    <div className="bg-red-500 h-full transition-all duration-500 flex items-center justify-end px-2" style={{ width: `${healthPercentage}%` }}>
-                       <HeartIcon />
+                    <div className="bg-red-500 h-full" style={{ width: `${healthPercentage}%` }}>
+                       <div className="h-full flex items-center justify-end px-2"><HeartIcon /></div>
                     </div>
                 </div>
                  <p className="text-xs text-center text-red-200 mt-1">{player.health} / {player.maxHealth}</p>
              </div>
              <div title="Tu vi">
                 <div className="w-full bg-slate-900 rounded-full h-2.5 border border-cyan-500/30 overflow-hidden">
-                    <div className="bg-cyan-500 h-full transition-all duration-500" style={{ width: `${cultivationPercentage}%` }}></div>
+                    <div className="bg-cyan-500 h-full" style={{ width: `${cultivationPercentage}%` }}></div>
                 </div>
                 <p className="text-xs text-center text-cyan-200 mt-1">{Math.floor(player.cultivation)} / {player.cultivationForNextRealm} (cảnh giới kế)</p>
              </div>

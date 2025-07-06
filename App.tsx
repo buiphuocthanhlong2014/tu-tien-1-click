@@ -1,8 +1,6 @@
-
-
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { GameState, Player, Item, EventLogEntry, YearlyEvent, EventChoice, ActiveQuest, Quest, Difficulty, Opponent, Tournament, RankEntry, Match, NPC, RelationshipStatus, SectChoice, ItemType, Gender, Pet, SecretRealm, Auction, NewQuestData } from './types';
-import { GeminiService, REALMS, SECT_RANKS, CharacterCreationOptions, INITIAL_NPCS, generateShopStock, TECHNIQUES, TALENTS, generateAuctionItems, SECTS } from './services/geminiService';
+import { GeminiService, REALMS, SECT_RANKS, CharacterCreationOptions, INITIAL_NPCS, generateShopStock, TECHNIQUES, TALENTS, generateAuctionItems, SECTS, LOCATIONS } from './services/geminiService';
 import { EventLogPanel } from './components/StoryLog';
 import { GameControls } from './components/PlayerInput';
 import { GameOverlay } from './components/GameOverlay';
@@ -22,7 +20,8 @@ import {
     ShopPanel,
     AuctionPanel,
     UpcomingEventsPanel,
-    ConversationPanel
+    ConversationPanel,
+    LocationImageDisplay
 } from './components/AppComponents';
 
 const SAVE_KEY = 'TUTIEN_SAVE_GAME';
@@ -73,6 +72,10 @@ function App() {
   const [selectedItem, setSelectedItem] = useState<{item: Item, isEquipped: boolean} | null>(null);
   const [isShopOpen, setShopOpen] = useState(false);
   const [isAuctionOpen, setAuctionOpen] = useState(false);
+
+  const [locationImageCache, setLocationImageCache] = useState<Record<string, string>>({});
+  const [currentLocationImage, setCurrentLocationImage] = useState<string>('');
+  const [isLocationImageLoading, setLocationImageLoading] = useState<boolean>(false);
 
   const gameStateRef = useRef(gameState);
   useEffect(() => {
@@ -145,19 +148,49 @@ function App() {
     };
   }, [gameState.gameStarted, gameState.isGameOver]);
 
+    const generateAndSetLocationImage = useCallback(async (locationName: string) => {
+        if (!geminiService || !gameState.player) return;
+        
+        if (locationImageCache[locationName]) {
+            setCurrentLocationImage(locationImageCache[locationName]);
+            return;
+        }
+
+        setLocationImageLoading(true);
+        setCurrentLocationImage('');
+        const locationDetails = LOCATIONS.find(l => l.name === locationName);
+        if (locationDetails) {
+            try {
+                const imageUrl = await geminiService.generateLocationImage(locationName, locationDetails.description, gameState.player);
+                if (imageUrl) {
+                    setCurrentLocationImage(imageUrl);
+                    setLocationImageCache(prevCache => ({...prevCache, [locationName]: imageUrl }));
+                }
+            } catch (e) {
+                console.error("Image generation failed in App component:", e);
+            }
+        }
+        setLocationImageLoading(false);
+    }, [geminiService, gameState.player, locationImageCache]);
+
+    useEffect(() => {
+        if (geminiService && gameState.player?.currentLocation && currentView === 'playing') {
+            generateAndSetLocationImage(gameState.player.currentLocation);
+        }
+    }, [geminiService, gameState.player?.currentLocation, currentView]);
+
   const calculateIntervalCountdown = (currentAge: number, interval: number, startAge: number): number => {
-    if (currentAge < startAge) {
-      return interval;
+    const yearsSinceBase = currentAge - startAge;
+    // If the current age is before or at the base age, the countdown is from the first event.
+    if (yearsSinceBase <= 0) {
+        return interval + yearsSinceBase;
     }
-    const yearsSinceStart = currentAge - startAge;
-    let remainder = yearsSinceStart % interval;
-
-    // Handle floating point inaccuracies for numbers very close to 0 or interval
-    if (remainder < 0.001 || Math.abs(remainder - interval) < 0.001) {
-        remainder = 0;
+    const remainder = yearsSinceBase % interval;
+    // Check for floating point issues when remainder is very close to 0
+    if (Math.abs(remainder) < 0.001 || Math.abs(remainder - interval) < 0.001) {
+        return 0; // It's this year
     }
-
-    return remainder === 0 ? 0 : interval - remainder;
+    return interval - remainder;
   };
 
   const getRelationshipStatus = (points: number): RelationshipStatus => {
@@ -355,7 +388,6 @@ function App() {
             const linhThachReward = Math.round((quest.reward.linhThach ?? 0) * p.linhThachGainModifier);
             const cultivationReward = Math.round(((quest.reward.cultivation ?? 0) / 2) * p.cultivationGainModifier);
             p.linhThach += linhThachReward;
-            p.cultivation += cultivationReward;
             if (quest.reward.item) p.inventory.push(quest.reward.item);
             newLogEntries.push({ id: gameState.eventLog.length + 400, year: p.age, text: `**NHIỆM VỤ HOÀN THÀNH: ${quest.title}!** Bạn nhận được phần thưởng.`, isMajor: true });
             p.activeQuest = null;
@@ -527,6 +559,14 @@ function App() {
         p.cultivationForNextRealm = REALMS[1].minCultivation;
     }
     
+    // Self-healing for invalid sect rank data
+    const sectExists = Object.values(SECTS).some(s => s.name === p.sect);
+    const rankExists = SECT_RANKS.some(r => r.name === p.sectRank);
+    if (sectExists && !rankExists) {
+        logBuffer.push({ id: idOffset + 10, year: p.age, text: `**LỖI DỮ LIỆU!** Chức vụ của bạn không hợp lệ (${p.sectRank}), đã được thiết lập lại về Ngoại Môn Đệ Tử.`, isMajor: true });
+        p.sectRank = SECT_RANKS[0].name;
+    }
+    
     if(p.health <= 0 && !isGameOver) {
         isGameOver = true;
         logBuffer.push({ id: idOffset + 200, year: p.age, text: `**TỬ VONG!** Sinh mệnh của bạn đã cạn kiệt. Hành trình tu tiên đã kết thúc.`, isMajor: true });
@@ -538,13 +578,15 @@ function App() {
   const handleChoiceSelection = useCallback((choice: EventChoice) => {
     if (!gameState.player || !gameState.currentEvent) return;
     
-    if (choice.effects.breakthroughAttempt) {
+    const safeChoiceEffects = choice.effects || {};
+
+    if (safeChoiceEffects.breakthroughAttempt) {
         handleBreakthroughAttempt();
         return;
     }
     
-    if (choice.effects.auctionAction) {
-        const action = choice.effects.auctionAction;
+    if (safeChoiceEffects.auctionAction) {
+        const action = safeChoiceEffects.auctionAction;
         setGameState(prev => {
             if (!prev.player) return prev;
             let player = { ...prev.player };
@@ -575,8 +617,8 @@ function App() {
         return;
     }
 
-    if (choice.effects.tournamentAction) {
-        const action = choice.effects.tournamentAction;
+    if (safeChoiceEffects.tournamentAction) {
+        const action = safeChoiceEffects.tournamentAction;
         setGameState(prev => {
             if (!prev.player) return prev;
             let player = { ...prev.player };
@@ -721,8 +763,8 @@ function App() {
         }
         
         const allTalents = Object.values(TALENTS).flat();
-        const talentBonusPerYear = p.talents.reduce((acc, talentId) => {
-            const talentInfo = allTalents.find(t => t.id === talentId);
+        const talentBonusPerYear = p.talents.reduce((acc, id) => {
+            const talentInfo = allTalents.find(t => t.id === id);
             return acc + (talentInfo?.effects.cultivationBonus ?? 0);
         }, 0);
         const petBonus = p.pets.reduce((acc, pet) => acc + (pet.effects.cultivationBonusPerYear ?? 0), 0);
@@ -732,7 +774,7 @@ function App() {
         p.cultivation += totalPassiveGain;
 
 
-        const { successChance, effects } = choice;
+        const { successChance } = choice;
         let isSuccessful = true;
         let outcomeText = '';
 
@@ -749,16 +791,16 @@ function App() {
         let eventText = `${originalEventDescription}<br>→ <i>${choice.text}</i>${outcomeText}`;
 
         if (isSuccessful) {
-            const eventCultivation = effects.cultivationGained ?? 0;
+            const eventCultivation = Number(safeChoiceEffects.cultivationGained) || 0;
             p.cultivation += Math.round(((eventCultivation * multiplier) / 2) * p.cultivationGainModifier);
 
-            const eventLinhThach = effects.linhThachChange ?? 0;
+            const eventLinhThach = Number(safeChoiceEffects.linhThachChange) || 0;
             p.linhThach = Math.max(0, p.linhThach + Math.round(eventLinhThach * multiplier * p.linhThachGainModifier));
 
-            p.health = Math.max(0, Math.min(p.maxHealth, p.health + (effects.healthChange ?? 0)));
+            p.health = Math.max(0, Math.min(p.maxHealth, p.health + (Number(safeChoiceEffects.healthChange) || 0)));
             
-            if (effects.newItem) {
-                const newItemData = effects.newItem;
+            if (safeChoiceEffects.newItem) {
+                const newItemData = safeChoiceEffects.newItem;
                 const newItem: Item = {
                     id: `${Date.now()}-${newItemData.name}`,
                     name: newItemData.name,
@@ -775,8 +817,8 @@ function App() {
                 eventText += ` (Nhận được <strong>${newItem.name}</strong>).`;
             }
             
-            if (effects.newPet) {
-                const petData = effects.newPet;
+            if (safeChoiceEffects.newPet) {
+                const petData = safeChoiceEffects.newPet;
                 const newPet: Pet = {
                     id: `${Date.now()}-${petData.name}`,
                     ...petData,
@@ -788,8 +830,8 @@ function App() {
                 newLogEntries.push({ id: prev.eventLog.length + 4, year: p.age, text: `Bạn đã nhận được sủng vật mới: <strong>${newPet.name} (${newPet.species})</strong>!`, isMajor: true });
             }
             
-            if (effects.startSecretRealm && !p.activeQuest && !activeSecretRealm) {
-                const realmData = effects.startSecretRealm;
+            if (safeChoiceEffects.startSecretRealm && !p.activeQuest && !activeSecretRealm) {
+                const realmData = safeChoiceEffects.startSecretRealm;
                 activeSecretRealm = {
                     id: `${Date.now()}-${realmData.name}`,
                     ...realmData,
@@ -798,8 +840,8 @@ function App() {
                 newLogEntries.push({ id: prev.eventLog.length + 3, year: p.age, text: `**CƠ DUYÊN LỚN:** Bạn đã bắt đầu hành trình thám hiểm Bí Cảnh: <strong>${activeSecretRealm.name}</strong>!`, isMajor: true });
             }
 
-            if (effects.newQuest && !p.activeQuest && !activeSecretRealm) {
-                const questData = effects.newQuest;
+            if (safeChoiceEffects.newQuest && !p.activeQuest && !activeSecretRealm) {
+                const questData = safeChoiceEffects.newQuest;
                 if (questData.reward.cultivation) {
                     questData.reward.cultivation = Math.round(questData.reward.cultivation / 2);
                 }
@@ -814,8 +856,8 @@ function App() {
                 newLogEntries.push({ id: prev.eventLog.length + 300, year: p.age, text: `**Nhiệm vụ mới:** Bạn đã nhận nhiệm vụ "${questTitle}".`, isMajor: true });
             }
             
-            if (effects.relationshipChange) {
-                const { npcId, points } = effects.relationshipChange;
+            if (safeChoiceEffects.relationshipChange) {
+                const { npcId, points } = safeChoiceEffects.relationshipChange;
                 const npcIndex = npcs.findIndex((n: NPC) => n.id === npcId);
                 if (npcIndex !== -1) {
                     const npc = npcs[npcIndex];
@@ -828,8 +870,8 @@ function App() {
                 }
             }
 
-            if (effects.newSpouse) {
-                const { npcId } = effects.newSpouse;
+            if (safeChoiceEffects.newSpouse) {
+                const { npcId } = safeChoiceEffects.newSpouse;
                 const npcIndex = npcs.findIndex((n: NPC) => n.id === npcId);
                 if (npcIndex !== -1 && !p.spouseId) {
                     p.spouseId = npcId;
@@ -839,7 +881,7 @@ function App() {
                 }
             }
             
-            if (effects.dualCultivation) {
+            if (safeChoiceEffects.dualCultivation) {
                 const currentRealmIndex = REALMS.findIndex(r => r.name === p.realm);
                 const currentRealm = REALMS[currentRealmIndex];
                 const nextRealm = REALMS[currentRealmIndex + 1];
@@ -1282,9 +1324,11 @@ function App() {
             let npcs = JSON.parse(JSON.stringify(prev.npcs));
             let newLogEntries: EventLogEntry[] = [];
             const npc = npcs.find((n: NPC) => n.id === prev.activeConversation!.npcId);
+            
+            const safeEffects = choice.effects || {};
 
-            if (choice.effects.relationshipChange && npc) {
-                 const { points } = choice.effects.relationshipChange;
+            if (safeEffects.relationshipChange && npc) {
+                 const points = Number(safeEffects.relationshipChange.points) || 0;
                  npc.relationshipPoints += (points * 2);
                  npc.status = getRelationshipStatus(npc.relationshipPoints);
 
@@ -1314,28 +1358,31 @@ function App() {
         if (!player) return null; // Should not happen if gameStarted
         
         return (
-          <main className="w-full max-w-7xl h-full flex flex-col md:flex-row gap-6">
-            <div className="flex flex-col basis-[35%] md:basis-[35%] min-h-0">
-              <PlayerInfoPanel player={player} npcs={npcs} onItemClick={handleItemInteraction} activeSecretRealm={activeSecretRealm} />
-               <UpcomingEventsPanel 
-                    nextTournamentIn={nextTournamentIn}
-                    nextAuctionIn={nextAuctionIn}
-                    nextShopRefreshIn={nextShopRefreshIn}
-                />
-            </div>
-            <div className="flex flex-col min-h-0 basis-[65%] md:basis-[65%]">
-                {tournament?.isActive ? (
-                    <TournamentPanel tournament={tournament} player={player} event={currentEvent} onSelectChoice={handleChoiceSelection} />
-                ) : (
-                    <div className="panel-bg flex flex-col flex-grow min-h-0 p-6 gap-4">
-                        <EventLogPanel eventLog={eventLog} />
-                        {currentEvent ? ( <EventChoicePanel event={currentEvent} onSelectChoice={handleChoiceSelection} /> ) : (
-                          <GameControls onNextYear={handleNextYear} onTravel={() => setMapOpen(true)} onOpenShop={handleOpenShop} isLoading={isLoading || !!gameState.activeConversation} error={error} disabled={!!currentEvent || !!auction?.isActive} hasTraveledThisYear={hasTraveledThisYear} player={player} activeSecretRealm={activeSecretRealm} />
-                        )}
-                    </div>
-                )}
-            </div>
-          </main>
+          <div className="w-full h-full relative">
+            <LocationImageDisplay imageUrl={currentLocationImage} isLoading={isLocationImageLoading} />
+            <main className="w-full max-w-7xl h-full flex flex-col md:flex-row gap-6 mx-auto relative">
+                <div className="flex flex-col basis-[35%] md:basis-[35%] min-h-0">
+                  <PlayerInfoPanel player={player} npcs={npcs} onItemClick={handleItemInteraction} activeSecretRealm={activeSecretRealm} />
+                   <UpcomingEventsPanel 
+                        nextTournamentIn={nextTournamentIn}
+                        nextAuctionIn={nextAuctionIn}
+                        nextShopRefreshIn={nextShopRefreshIn}
+                    />
+                </div>
+                <div className="flex flex-col min-h-0 basis-[65%] md:basis-[65%]">
+                    {tournament?.isActive ? (
+                        <TournamentPanel tournament={tournament} player={player} event={currentEvent} onSelectChoice={handleChoiceSelection} />
+                    ) : (
+                        <div className="panel-bg flex flex-col flex-grow min-h-0 p-6 gap-4">
+                            <EventLogPanel eventLog={eventLog} />
+                            {currentEvent ? ( <EventChoicePanel event={currentEvent} onSelectChoice={handleChoiceSelection} /> ) : (
+                              <GameControls onNextYear={handleNextYear} onTravel={() => setMapOpen(true)} onOpenShop={handleOpenShop} isLoading={isLoading || !!gameState.activeConversation} error={error} disabled={!!currentEvent || !!auction?.isActive} hasTraveledThisYear={hasTraveledThisYear} player={player} activeSecretRealm={activeSecretRealm} />
+                            )}
+                        </div>
+                    )}
+                </div>
+            </main>
+          </div>
         );
       case 'instructions':
         return <InstructionsPanel onClose={() => setCurrentView('main-menu')} />;
@@ -1488,7 +1535,7 @@ function App() {
       
       <input type="file" accept=".json" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
 
-      <div className="w-full flex-grow flex justify-center items-stretch z-10 min-h-0">
+      <div className="w-full flex-grow flex justify-center items-stretch min-h-0">
         {isMapOpen && gameState.player && <MapPanel currentLocation={gameState.player.currentLocation} onTravel={handleTravel} onClose={() => setMapOpen(false)} />}
         {isRankingOpen && <GeniusRankingPanel ranking={gameState.geniusRanking} onClose={() => setRankingOpen(false)} />}
         {isRelationshipPanelOpen && gameState.player && <RelationshipPanel npcs={gameState.npcs} player={gameState.player} onClose={() => setRelationshipPanelOpen(false)} onUpdateAvatar={handleUpdateNpcAvatar} onStartConversation={handleStartConversation} />}

@@ -584,6 +584,9 @@ export class GeminiService {
                 if(!choice.text) {
                     choice.text = `Lựa chọn ${index + 1}`;
                 }
+                if (!choice.effects) {
+                    choice.effects = {};
+                }
             });
 
             return parsedData;
@@ -669,6 +672,12 @@ export class GeminiService {
                 throw new Error("Invalid conversation structure from AI.");
             }
 
+            parsedData.choices.forEach(choice => {
+                if (!choice.effects) {
+                    choice.effects = {};
+                }
+            });
+
             return parsedData;
 
         } catch (e) {
@@ -677,6 +686,28 @@ export class GeminiService {
                 description: `Truyền âm phù của bạn đã được gửi đi, nhưng không có hồi âm. Có lẽ ${npc.name} đang bận.`,
                 choices: [{ text: "Đóng", effects: {} }]
             };
+        }
+    }
+
+    public async generateLocationImage(locationName: string, locationDescription: string, player: Player): Promise<string> {
+        const prompt = `Ethereal wuxia digital painting of a vast landscape, anime key visual style. The scene is of "${locationName}" - ${locationDescription}. A lone cultivator, ${player.gender === 'Nam' ? 'a man' : 'a woman'}, is present, observing the scene. The atmosphere should be mystical and grand. Cinematic lighting, highly detailed, epic scale.`;
+        
+        try {
+            const response = await this.ai.models.generateImages({
+                model: 'imagen-3.0-generate-002',
+                prompt: prompt,
+                config: { numberOfImages: 1, outputMimeType: 'image/jpeg' },
+            });
+
+            if (response.generatedImages && response.generatedImages.length > 0) {
+                const base64ImageBytes: string = response.generatedImages[0].image.imageBytes;
+                return `data:image/jpeg;base64,${base64ImageBytes}`;
+            }
+            throw new Error("No image was generated.");
+
+        } catch (error) {
+            console.error(`Failed to generate image for ${locationName}:`, error);
+            return '';
         }
     }
 }
