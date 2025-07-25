@@ -23,6 +23,8 @@ import {
     ConversationPanel,
     LocationImageDisplay
 } from './components/AppComponents';
+import SplashCursor from './src/blocks/Animations/SplashCursor/SplashCursor';
+import LiquidChrome from './src/blocks/Backgrounds/LiquidChrome/LiquidChrome';
 
 const SAVE_KEY = 'TUTIEN_SAVE_GAME';
 const API_KEY_STORAGE_KEY = 'TUTIEN_API_KEY';
@@ -1578,6 +1580,8 @@ function App() {
         )}
         {renderContent()}
       </div>
+      <SplashCursor />
+      <LiquidChrome />
     </div>
   );
 }
